@@ -16,56 +16,6 @@ CYAN = "\x1b[36m"
 WHITE = "\x1b[37m"
 RESET = "\x1b[0m"
 
-
-# def bigdownload(url, download_path, outfile_name, chunk_size=8192):
-#     logging.basicConfig(
-#         filename=f"{download_path}/big_downloads.log",
-#         filemode="a",
-#         format="%(asctime)s %(levelname)s %(message)s",
-#         datefmt="%Y-%m-%d %H:%M:%S",
-#         level=logging.DEBUG,
-#     )
-
-#     logger = logging.getLogger(__name__)
-#     retryParams = Retry(
-#         total=3,
-#         backoff_factor=random.uniform(9, 12),
-#         status_forcelist=[408, 500, 502, 503, 504, 111, 429],
-#     )
-#     headers = {"Accept-Encoding": "gzip, deflate", "Connection": "keep-alive"}
-#     with requests.Session() as session:
-#         session.mount(url, HTTPAdapter(max_retries=retryParams))
-#         try:
-#             with session.get(
-#                 url, stream=True, timeout=random.uniform(10, 12), headers=headers
-#             ) as response:
-#                 if response.status_code == 200:
-#                     if "<title>Access Denied</title>" in response.text:
-#                         print(f"{RED}Access was denied for {CYAN}{url}{RESET}")
-#                     else:
-#                         with open(f"{download_path}/{outfile_name}", "wb") as file:
-#                             for chunk in response.iter_content(chunk_size=chunk_size):
-#                                 file.write(chunk)
-#                             print(f"{GREEN}Success downloading {CYAN}{url}{RESET}")
-#                 else:
-#                     print(
-#                         f"Failed to download file {url} with status code {RED}{response.status_code}{RESET}"
-#                     )
-#         except requests.exceptions.ReadTimeout as e:
-#             logger.error(f"Request for {url} failed with read timeout: {RED}{e}{RESET}")
-#         except requests.exceptions.ConnectionError as e:
-#             logger.error(
-#                 f"Request for {url} failed with a connection error: {RED}{e}{RESET}"
-#             )
-#         except requests.exceptions.RequestException as e:
-#             logger.error(
-#                 f"Request for {url} failed with a request exception: {RED}{e}{RESET}"
-#             )
-#         except Exception as e:
-#             logger.error(f"An unexpected error occurred: {RED}{e}{RESET}")
-#             raise
-
-
 def get_file(url, session, headers, retryParams, stream=False):
     session.mount(url, HTTPAdapter(max_retries=retryParams))
     with session.get(
@@ -143,5 +93,22 @@ def jqfilter(infile, outfile, jq_filter="."):
 def unzipper(infile, outdir):
     with open(infile, "r") as f:
         subprocess.run(
-            ["unzip", infile, '-d', outdir], stdin=f, capture_output=True, text=True
+            ["unzip", infile, '-d', outdir], stdin=f, capture_output=True, text=False
         )
+
+def getDatasetRowCount(url):
+    """
+    Gets the number of rows of a dataset under the Socrata API
+    """
+    import codecs
+    from urllib.request import urlopen
+    import json
+    reader = codecs.getreader("utf-8")
+    obj = reader(urlopen(url + "?$select=count(*)"))
+    obj = json.load(obj)
+    count = int(obj[0]['count'])
+    return count
+
+
+# Explicitly define what gets imported when using `from models import *`
+__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount']
