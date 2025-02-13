@@ -109,6 +109,33 @@ def getDatasetRowCount(url):
     count = int(obj[0]['count'])
     return count
 
+def isCategory(entry, category_markers, alphanumeric_exceptions, numeric_exceptions):
+    d = {}
+    for key, value in entry.items():
+        if key == 'Format':
+            if (value.startswith('Alphanumeric') or any([marker in value for marker in numeric_exceptions])) and not any([marker in value for marker in alphanumeric_exceptions]):
+                d['category'] = True
+            elif any([marker in entry['Field Name'] for marker in category_markers]):
+                d['category'] = True
+            else:
+                d['category'] = False
+        d[key] = value
+    return d
+
+def merge_dicts(shared: dict, specific: dict) -> dict:
+    merged = {}
+    for key in set(shared) | set(specific):
+        shared_value, specific_value = shared.get(key), specific.get(key)
+        
+        if isinstance(shared_value, dict) and isinstance(specific_value, dict):
+            merged[key] = merge_dicts(shared_value, specific_value)
+        elif isinstance(shared_value, list) and isinstance(specific_value, list):
+            merged[key] = merge_lists(shared_value, specific_value)
+        elif specific_value is not None:
+            merged[key] = specific_value
+        else:
+            merged[key] = shared_value
+    return merged
 
 # Explicitly define what gets imported when using `from models import *`
-__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount']
+__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount', 'identify_categories']

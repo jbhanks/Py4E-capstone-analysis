@@ -42,6 +42,29 @@ def find_table_start(lines, table):
     return -1
 
 
+
+####################################################################################################
+##
+##  Functions to extract definitions from the PLUTO data dictionary.
+####################################################################################################
+
+def parse_field_name(name_string):
+    long = name_string.split('(')[0].strip()
+    short = re.sub(r'.*?\((.*?)\).*?', r'\1', name_string)
+    return long.lower().replace(' ', '_'),  short.lower()
+
+def parse_definitions_table(description_string):
+    table_string = re.sub(r'.*Value Description(.*)', r'\1', description_string, flags=re.DOTALL)
+    lines = table_string.splitlines()
+    d = {}
+    for line in lines:
+        try:
+            key, value = line.split(' ', 1)
+            d[key.strip()] = value.strip()
+        except:
+            print(line)
+    return d
+
 ####################################################################################################
 ##
 ##  Functions to extract zoning definitions from a particularly troublesome PDF, I doubt most of these will be reusable.

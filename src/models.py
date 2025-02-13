@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List
+from sqlalchemy.orm._orm_constructors import synonym
 
 
 # Dataclass to hold information about an NYC Open Data dataset, to filled with metadata provided by the API
@@ -48,3 +49,13 @@ class Dataset:
                 else None
             )
 
+@dataclass
+class ColCustomization:
+    """Class to hold customizations for a column"""
+    name: str
+    dtype: str
+    synonyms: List[str] = field(default_factory=list)
+    drop: bool = False
+
+
+__all__ = ['Dataset', 'ColCustomization']
