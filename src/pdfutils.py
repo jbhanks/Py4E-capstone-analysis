@@ -2,6 +2,77 @@ import camelot
 import pdfplumber
 
 
+def get_word_starts_x(line):
+    starts = [word['x0'] for word in line]
+    return starts
+
+# Makes sure that words that are just slightly different in top coordinate are counted as the same line.
+def normalize_top(words, tolerance=0.3):
+    """Adjust 'top' values so that small variations within tolerance are treated as equal. This is necessary when parsing PDFs where words on a line may have slightly different top positions. Made with the help of ChatGPT"""
+    sorted_by_top = sorted(words, key=lambda w: w["top"])
+    clusters = []
+
+    for word in sorted_by_top:
+        if not clusters or abs(word["top"] - clusters[-1][0]) > tolerance:
+            clusters.append((word["top"], []))  # Create new cluster
+        clusters[-1][1].append(word)
+
+    # Assign the lowest top value in each cluster
+    top_mapping = {}
+    for cluster_top, cluster_words in clusters:
+        for word in cluster_words:
+            top_mapping[word["top"]] = cluster_top
+
+    sorted_words = sorted(words, key=lambda w: (top_mapping[w["top"]], w["x0"]))
+    return sorted_words
+
+def map_pdf(pdf_path, same_line_tolerance=0.3):
+    fulltext = {}
+    with pdfplumber.open(pdf_path) as pdf:
+        char_index = 0
+        all_lines = []  # Store all detected lines first
+        for page in pdf.pages:
+            last_top = None
+            words = page.extract_words()  
+            sorted_words = normalize_top(words, same_line_tolerance)
+            line = []
+
+            for word in sorted_words:
+                word_length = len(word["text"])
+                word['range'] = (char_index, char_index + word_length)
+                char_index += word_length + 1
+
+                if last_top is None or abs(word["top"] - last_top) > same_line_tolerance:  # New line
+                    line_start = word['range'][0]
+                    line_end = word['range'][1]
+                    line_range = (line_start, line_end)
+                    if last_top is not None:
+                        all_lines.append((line_range, line))  # Store completed line
+                    last_top = word["top"]
+                    line = [word]
+                else:
+                    line.append(word)
+
+            if line:  # Ensure the last line is added
+                line_end = word['range'][1]
+                line_range = (line_start, line_end)
+                all_lines.append((line_range, line))
+
+            # Store lines, skipping first and last. The first line is the title, and thus identical for each page, the last line is just the page number.
+            line_no = 0
+            for line in all_lines[1:-1]:  # Slice to remove first and last lines
+                char_range = (next(iter(line[1]))['range'][0],  next(reversed(line[1]))['range'][1])
+                x_range = (next(iter(line[1]))['x0'],  next(reversed(line[1]))['x1'])
+                line_info = {'range' : char_range, 'x_dims' : x_range }
+                line_content = ' '.join([w['text'] for w in line[1]])
+                print(line_content)
+                fulltext[(line_no, line_content)] = (line_info, line)
+                line_no += 1
+    return fulltext
+
+########################### Zoning data dict
+
+
 def parse_zoning_def_dict(pdf_path):
     all_tables = {}
     with pdfplumber.open(pdf_path) as pdf:
@@ -14,21 +85,24 @@ def parse_zoning_def_dict(pdf_path):
                 # Find the position of the table in the raw text
                 table_start_line = find_table_start(lines, table)
                 # Extract the line before the table, if available
-                label_line = lines[table_start_line - 2] if table_start_line > 0  else None
-                table = [row for row in table if 'Abbreviation' not in row]
-                if 'APPENDIX' in label_line:
-                    label_line = re.sub('APPENDIX.*: ', '', label_line)
-                    label_line = re.sub(' +', '_', label_line.lower())
+                label_line = (
+                    lines[table_start_line - 2] if table_start_line > 0 else None
+                )
+                table = [row for row in table if "Abbreviation" not in row]
+                if "APPENDIX" in label_line:
+                    label_line = re.sub("APPENDIX.*: ", "", label_line)
+                    label_line = re.sub(" +", "_", label_line.lower())
                     prev_label_line = label_line
-                elif 'ZONING TAX LOT DATA DICTIONARY' in label_line:
+                elif "ZONING TAX LOT DATA DICTIONARY" in label_line:
                     label_line = None
-                elif 'APPENDIX' not in label_line:
-                    table = [row for row in table if 'Abbreviation' not in row]
+                elif "APPENDIX" not in label_line:
+                    table = [row for row in table if "Abbreviation" not in row]
                 if label_line != None:
                     all_tables[label_line] = table
                 else:
                     all_tables[prev_label_line] = all_tables[prev_label_line] + table
     return all_tables
+
 
 def find_table_start(lines, table):
     """
@@ -42,28 +116,32 @@ def find_table_start(lines, table):
     return -1
 
 
-
 ####################################################################################################
 ##
 ##  Functions to extract definitions from the PLUTO data dictionary.
 ####################################################################################################
 
+
 def parse_field_name(name_string):
-    long = name_string.split('(')[0].strip()
-    short = re.sub(r'.*?\((.*?)\).*?', r'\1', name_string)
-    return long.lower().replace(' ', '_'),  short.lower()
+    long = name_string.split("(")[0].strip()
+    short = re.sub(r".*?\((.*?)\).*?", r"\1", name_string)
+    return long.lower().replace(" ", "_"), short.lower()
+
 
 def parse_definitions_table(description_string):
-    table_string = re.sub(r'.*Value Description(.*)', r'\1', description_string, flags=re.DOTALL)
+    table_string = re.sub(
+        r".*Value Description(.*)", r"\1", description_string, flags=re.DOTALL
+    )
     lines = table_string.splitlines()
     d = {}
     for line in lines:
         try:
-            key, value = line.split(' ', 1)
+            key, value = line.split(" ", 1)
             d[key.strip()] = value.strip()
         except:
             print(line)
     return d
+
 
 ####################################################################################################
 ##
@@ -173,6 +251,7 @@ def keep_lines_outside_table(page, lines):
 # It deals with the case where there is a page with two tables, each table having its own set of footnotes, and those footnotes being arranged in two columns.
 # The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
 
+
 def replace_footnote_num_with_footnote_text(df, table_footnotes, key, num):
     df.replace(
         {
@@ -201,6 +280,7 @@ def replace_footnote_num_with_footnote_text(df, table_footnotes, key, num):
     df.columns = df.columns.str.replace("\n", " ", regex=True)
     return df
 
+
 def parse_footnote_layout_1(key, page_content, orientation):
     table_footnotes = {key: {"footnotes": {}}}
     lines = page_content[key][1].split("\n")
@@ -213,8 +293,9 @@ def parse_footnote_layout_1(key, page_content, orientation):
     table_footnotes[key]["df"] = df
     return table_footnotes
 
+
 def parse_footnote_layout_2(key, page_content, orientation):
-    table_footnotes = {key : {'footnotes' : {}} }
+    table_footnotes = {key: {"footnotes": {}}}
     print(
         f"Assuming that {re.search(r'\n\d+\n\d+\n', page_content[key][1])} represents two columns of footnotes"
     )
@@ -257,6 +338,7 @@ def parse_footnote_layout_2(key, page_content, orientation):
         df = replace_footnote_num_with_footnote_text(df, table_footnotes, key, num)
     table_footnotes[key]["df"] = df
     return table_footnotes
+
 
 def handle_two_col_footnotes(page_content, key, orientation):
     # table_footnotes = {key: {"footnotes": {}}}
@@ -322,6 +404,7 @@ def parse_multitable_page(page_text, lines, tables, table_orientations):
         results |= table_and_footnotes
     return results
 
+
 def parse_single_table_page(page_text, lines, table, table_orientation):
     # Stuff before the table name isn't needed
     split_content = re.split(r"(ZONING DATA TABLE \d+)", page_text.strip())
@@ -336,7 +419,7 @@ def parse_single_table_page(page_text, lines, table, table_orientation):
     for num in page_content[table_name]["footnotes"].keys():
         df.replace(
             {
-                rf"<s>\s?{num}</s>": f' ({page_content[table_name]['footnotes'][num]})',
+                rf"<s>\s?{num}</s>": f" ({page_content[table_name]['footnotes'][num]})",
                 "\u2013": "False",
             },
             regex=True,
@@ -344,19 +427,15 @@ def parse_single_table_page(page_text, lines, table, table_orientation):
         )
         df.index = df.index.str.replace(
             rf"<s>\s?{num}</s>",
-            f' ({page_content[table_name]['footnotes'][num]})',
+            f" ({page_content[table_name]['footnotes'][num]})",
             regex=True,
         )
         df.loc[
             "notes",
-            df.columns[
-                df.columns.str.contains(rf"<s>\s?{num}</s>", na=False)
-            ],
+            df.columns[df.columns.str.contains(rf"<s>\s?{num}</s>", na=False)],
         ] = page_content[table_name]["footnotes"][num]
         df.index = df.index.str.replace(rf"<s>\s?{num}</s>", "", regex=True)
-        df.columns = df.columns.str.replace(
-            rf"<s>\s?{num}</s>", "", regex=True
-        )
+        df.columns = df.columns.str.replace(rf"<s>\s?{num}</s>", "", regex=True)
         df.index = df.index.str.replace("\n", " ", regex=True)
         df.columns = df.columns.str.replace("\n", " ", regex=True)
     page_content[table_name]["df"] = df
@@ -393,11 +472,15 @@ def parse_zoning_details(pdf_path):
             # Note that this block assumes that a page with two tables also has the footnotes in two columns.
             # While that happens to be true for this pdf, any attempt to make this more reusable must address this.
             if len(re.findall(r"(ZONING DATA TABLE \d+)", page_text)) > 1:
-                page_footnotes = parse_multitable_page(page_text, lines, tables, table_orientations)
+                page_footnotes = parse_multitable_page(
+                    page_text, lines, tables, table_orientations
+                )
                 results |= page_footnotes
             elif len(re.findall(r"(ZONING DATA TABLE \d+)", page_text)) == 1:
                 # Stuff before the table name isn't needed
-                page_footnotes = parse_single_table_page(page_text, lines, tables[0], table_orientations[0])
+                page_footnotes = parse_single_table_page(
+                    page_text, lines, tables[0], table_orientations[0]
+                )
                 results |= page_footnotes
     return results
 
