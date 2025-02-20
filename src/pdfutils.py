@@ -65,7 +65,6 @@ def map_pdf(pdf_path, same_line_tolerance=0.3):
                 x_range = (next(iter(line[1]))['x0'],  next(reversed(line[1]))['x1'])
                 line_info = {'range' : char_range, 'x_dims' : x_range }
                 line_content = ' '.join([w['text'] for w in line[1]])
-                print(line_content)
                 fulltext[(line_no, line_content)] = (line_info, line)
                 line_no += 1
     return fulltext
@@ -139,7 +138,7 @@ def parse_definitions_table(description_string):
             key, value = line.split(" ", 1)
             d[key.strip()] = value.strip()
         except:
-            print(line)
+            print("Unable to process line", line)
     return d
 
 
