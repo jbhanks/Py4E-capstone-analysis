@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
 from sqlalchemy.orm._orm_constructors import synonym
-
+from typing import Optional
 
 # Dataclass to hold information about an NYC Open Data dataset, to filled with metadata provided by the API
 @dataclass
@@ -49,13 +49,24 @@ class Dataset:
                 else None
             )
 
+
+def definition():
+    return {
+        'code': None,
+        'definition': None,
+        'etc': None,
+    }
+
 @dataclass
 class ColCustomization:
     """Class to hold customizations for a column"""
-    name: str
-    dtype: str
+    short_name: str
+    new_name: Optional[str] = None
+    dtype: Optional[str] = None
     synonyms: List[str] = field(default_factory=list)
+    definitions: dict = field(default_factory=definition)
     drop: bool = False
+    is_fk: bool = False
 
 
 __all__ = ['Dataset', 'ColCustomization']
