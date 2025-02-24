@@ -130,7 +130,7 @@ def merge_dicts(shared: dict, specific: dict) -> dict:
         if isinstance(shared_value, dict) and isinstance(specific_value, dict):
             merged[key] = merge_dicts(shared_value, specific_value)
         elif isinstance(shared_value, list) and isinstance(specific_value, list):
-            merged[key] = merge_lists(shared_value, specific_value)
+            merged[key] = shared_value + specific_value
         elif specific_value is not None:
             merged[key] = specific_value
         else:
@@ -138,4 +138,4 @@ def merge_dicts(shared: dict, specific: dict) -> dict:
     return merged
 
 # Explicitly define what gets imported when using `from models import *`
-__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount', 'identify_categories']
+__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount', 'isCategory']

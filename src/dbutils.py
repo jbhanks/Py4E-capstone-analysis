@@ -3,7 +3,7 @@ from sqlalchemy import inspect, create_engine, Column, Integer, String, Date, Me
 
 import pandas as pd
 import datetime
-from helpers import merge_dicts
+from src.helpers import merge_dicts
 # from sqlalchemy.orm import sessionmaker
 # import geopandas as gpd
 
@@ -151,3 +151,7 @@ def preprocess_dataset(engine, shared_dataset_configs, specific_dataset_config, 
     column_names, cols, keepcols, datetime_cols = prep_col_info(configs, name)
     prefix = configs['prefix'] + '/' + name
     insert_dataset(prefix + "_rows.json", engine,prefix, keepcols, column_names, datetime_cols)
+
+
+# Explicitly define what gets imported when using `from models import *`
+__all__ = ['table_exists', 'write_layer_to_db', 'create_lookup_table', 'create_table_for_dataset', 'insert_dataset', 'prep_col_info']

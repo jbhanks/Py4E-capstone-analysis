@@ -50,12 +50,12 @@ class Dataset:
             )
 
 
-def definition():
-    return {
-        'code': None,
-        'definition': None,
-        'etc': None,
-    }
+# def Definition():
+#     return {
+#         'code': None,
+#         'definition': None,
+#         'etc': None,
+#     }
 
 @dataclass
 class ColCustomization:
@@ -64,7 +64,8 @@ class ColCustomization:
     new_name: Optional[str] = None
     dtype: Optional[str] = None
     synonyms: List[str] = field(default_factory=list)
-    definitions: dict = field(default_factory=definition)
+    definitions: dict = field(default_factory=dict)
+    # definitions: dict = field(default_factory=Definition)
     drop: bool = False
     is_fk: bool = False
 

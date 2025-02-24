@@ -6,68 +6,122 @@ def get_word_starts_x(line):
     starts = [word['x0'] for word in line]
     return starts
 
-# Makes sure that words that are just slightly different in top coordinate are counted as the same line.
-def normalize_top(words, tolerance=0.3):
+def normalize_top(objects, tolerance=0.3):
     """Adjust 'top' values so that small variations within tolerance are treated as equal. This is necessary when parsing PDFs where words on a line may have slightly different top positions. Made with the help of ChatGPT"""
-    sorted_by_top = sorted(words, key=lambda w: w["top"])
+    sorted_by_top = sorted(objects, key=lambda w: w["top"])
     clusters = []
 
-    for word in sorted_by_top:
-        if not clusters or abs(word["top"] - clusters[-1][0]) > tolerance:
-            clusters.append((word["top"], []))  # Create new cluster
-        clusters[-1][1].append(word)
+    for object in sorted_by_top:
+        if not clusters or abs(object["top"] - clusters[-1][0]) > tolerance:
+            clusters.append((object["top"], []))  # Create new cluster
+        clusters[-1][1].append(object)
 
     # Assign the lowest top value in each cluster
     top_mapping = {}
-    for cluster_top, cluster_words in clusters:
-        for word in cluster_words:
-            top_mapping[word["top"]] = cluster_top
+    for cluster_top, cluster_objects in clusters:
+        for object in cluster_objects:
+            top_mapping[object["top"]] = cluster_top
 
-    sorted_words = sorted(words, key=lambda w: (top_mapping[w["top"]], w["x0"]))
-    return sorted_words
+    sorted_objects = sorted(objects, key=lambda w: (top_mapping[w["top"]], w["x0"]))
+    return sorted_objects
 
-def map_pdf(pdf_path, same_line_tolerance=0.3):
-    fulltext = {}
-    with pdfplumber.open(pdf_path) as pdf:
-        char_index = 0
-        all_lines = []  # Store all detected lines first
-        for page in pdf.pages:
-            last_top = None
-            words = page.extract_words()  
-            sorted_words = normalize_top(words, same_line_tolerance)
+
+def extract_and_normalize_elements(page, same_line_tolerance):
+    """Extract words and section markers, normalize their positions, and return sorted elements."""
+    words = page.extract_words()
+    normalized_words = normalize_top(words, same_line_tolerance)
+
+    rects = [
+        {"text": "---section---", "top": r["top"], 'x0': r['x0'], 'x1': r['x1']}  # Dummy marker for sorting
+        for r in page.objects["rect"]
+        if r["width"] > page.width * 0.5 and r["height"] < 2 and r['non_stroking_color'] is not None 
+        and r['non_stroking_color'][0] < 0.902  # Adjust thresholds as needed
+    ]
+    normalized_rects = normalize_top(rects, same_line_tolerance)
+    elements = normalized_words + normalized_rects
+    return sorted(elements, key=lambda e: e["top"])
+
+def group_elements_into_lines(elements_sorted, same_line_tolerance):
+    """Group sorted elements into lines based on top coordinate similarity."""
+    char_index = 0
+    page_lines = []
+    last_top = None
+    line = []
+
+    for word in elements_sorted:
+        if word['text'] == "---section---":
+            if line:  
+                page_lines.append((line_range, line))
+            page_lines.append(word['text'])  # Append section break
             line = []
+            last_top = word["top"]
+            continue
 
-            for word in sorted_words:
-                word_length = len(word["text"])
-                word['range'] = (char_index, char_index + word_length)
-                char_index += word_length + 1
+        word_length = len(word["text"])
+        word['range'] = (char_index, char_index + word_length)
+        char_index += word_length + 1
 
-                if last_top is None or abs(word["top"] - last_top) > same_line_tolerance:  # New line
-                    line_start = word['range'][0]
-                    line_end = word['range'][1]
-                    line_range = (line_start, line_end)
-                    if last_top is not None:
-                        all_lines.append((line_range, line))  # Store completed line
-                    last_top = word["top"]
-                    line = [word]
-                else:
-                    line.append(word)
+        if last_top is None or abs(word["top"] - last_top) > same_line_tolerance:
+            line_start = word['range'][0]
+            line_end = word['range'][1]
+            line_range = (line_start, line_end)
+            if last_top is not None and line:
+                sorted_line = sorted(line, key=lambda w: w["x0"]) # Do one last horizontal sort to make sure the words in each line are in the correct order
+                page_lines.append((line_range, sorted_line))
+            last_top = word["top"]
+            line = [word]
+        else:
+            line.append(word)
 
-            if line:  # Ensure the last line is added
-                line_end = word['range'][1]
-                line_range = (line_start, line_end)
-                all_lines.append((line_range, line))
+    if line:
+        sorted_line = sorted(line, key=lambda w: w["x0"])
+        page_lines.append((line_range, sorted_line))
 
-            # Store lines, skipping first and last. The first line is the title, and thus identical for each page, the last line is just the page number.
-            line_no = 0
-            for line in all_lines[1:-1]:  # Slice to remove first and last lines
-                char_range = (next(iter(line[1]))['range'][0],  next(reversed(line[1]))['range'][1])
-                x_range = (next(iter(line[1]))['x0'],  next(reversed(line[1]))['x1'])
-                line_info = {'range' : char_range, 'x_dims' : x_range }
-                line_content = ' '.join([w['text'] for w in line[1]])
-                fulltext[(line_no, line_content)] = (line_info, line)
-                line_no += 1
-    return fulltext
+    return page_lines
+
+def process_page_lines(page_lines):
+    """Store lines while removing the title and page number, and format them."""
+    all_lines = []
+    line_no = 0
+
+    for line in page_lines[1:-1]:  # Skip title and page number
+        if line == "---section---":
+            all_lines.append(line)
+            continue
+        char_range = (next(iter(line[1]))['range'][0], next(reversed(line[1]))['range'][1])
+        x_range = (next(iter(line[1]))['x0'], next(reversed(line[1]))['x1'])
+        line_info = {'range': char_range, 'x_dims': x_range}
+        line_content = ' '.join([w['text'] for w in line[1]])
+        all_lines.append((line_no, line_content, line_info, line))
+        line_no += 1
+
+    return all_lines
+
+def segment_lines_into_sections(all_lines):
+    """Segment the processed lines into structured sections."""
+    sections = []
+    section = {}
+
+    for line in all_lines:
+        if line == "---section---":
+            sections.append(section)
+            section = {}
+        else:
+            section[(line[0], line[1])] = (line[2], line[3])
+
+    return sections
+
+def map_pdf(pdf_path, same_line_tolerance=0.3, start_page=None, stop_page=None):
+    """Main function to extract structured sections from a PDF."""
+    with pdfplumber.open(pdf_path) as pdf:
+        all_lines = []
+        for page in pdf.pages[start_page:stop_page]:
+            elements_sorted = extract_and_normalize_elements(page, same_line_tolerance)
+            page_lines = group_elements_into_lines(elements_sorted, same_line_tolerance)
+            all_lines.extend(process_page_lines(page_lines))
+
+        sections = segment_lines_into_sections(all_lines)
+    return sections
 
 ########################### Zoning data dict
 
