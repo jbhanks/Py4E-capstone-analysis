@@ -1,6 +1,34 @@
 import camelot
 import pdfplumber
 
+def clean_name(full_name, patterns):
+    new_name = full_name.lower()
+    for pattern, replacement in patterns:
+        new_name = pattern.sub(replacement, new_name)
+    return new_name
+
+
+def parse_table(table):
+    rows = []
+    col2_start = table[0][1][1]['x0']
+    full_row_text = ''
+    for i in table[1:]:
+        txt = i[0]
+        word_metadata = i[1]
+        print(txt)
+        abs(word_metadata[0]['x0'] - col2_start)
+        # This logic helps deal with table rows that have multiple lines of text in a cell
+        if abs(word_metadata[0]['x0'] - col2_start) < 1:
+            print("secondary line")
+            full_row_text = f'{full_row_text} {txt}'
+        elif full_row_text:
+            rows.append(full_row_text.split(' ', 1))
+            print("First line of later row")
+            full_row_text = txt
+        else:
+            print("First line of first row")
+            full_row_text = txt  
+    return rows
 
 def get_word_starts_x(line):
     starts = [word['x0'] for word in line]
@@ -32,10 +60,11 @@ def extract_and_normalize_elements(page, same_line_tolerance):
     normalized_words = normalize_top(words, same_line_tolerance)
 
     rects = [
-        {"text": "---section---", "top": r["top"], 'x0': r['x0'], 'x1': r['x1']}  # Dummy marker for sorting
+        # {"text": "---section---", "top": r["top"], 'x0': r['x0'], 'x1': r['x1']}  # Dummy marker for sorting
+        {**r, "text": "---section---"}
         for r in page.objects["rect"]
         if r["width"] > page.width * 0.5 and r["height"] < 2 and r['non_stroking_color'] is not None 
-        and r['non_stroking_color'][0] < 0.902  # Adjust thresholds as needed
+        and r['non_stroking_color'][0] > 0.5  # Adjust thresholds as needed
     ]
     normalized_rects = normalize_top(rects, same_line_tolerance)
     elements = normalized_words + normalized_rects
@@ -51,23 +80,19 @@ def group_elements_into_lines(elements_sorted, same_line_tolerance):
     for word in elements_sorted:
         if word['text'] == "---section---":
             if line:  
-                page_lines.append((line_range, line))
-            page_lines.append(word['text'])  # Append section break
+                page_lines.append(line)
+            page_lines.append([word])  # Append section break
             line = []
             last_top = word["top"]
             continue
 
         word_length = len(word["text"])
-        word['range'] = (char_index, char_index + word_length)
         char_index += word_length + 1
 
         if last_top is None or abs(word["top"] - last_top) > same_line_tolerance:
-            line_start = word['range'][0]
-            line_end = word['range'][1]
-            line_range = (line_start, line_end)
             if last_top is not None and line:
                 sorted_line = sorted(line, key=lambda w: w["x0"]) # Do one last horizontal sort to make sure the words in each line are in the correct order
-                page_lines.append((line_range, sorted_line))
+                page_lines.append(sorted_line)
             last_top = word["top"]
             line = [word]
         else:
@@ -75,7 +100,7 @@ def group_elements_into_lines(elements_sorted, same_line_tolerance):
 
     if line:
         sorted_line = sorted(line, key=lambda w: w["x0"])
-        page_lines.append((line_range, sorted_line))
+        page_lines.append(sorted_line)
 
     return page_lines
 
@@ -85,14 +110,10 @@ def process_page_lines(page_lines):
     line_no = 0
 
     for line in page_lines[1:-1]:  # Skip title and page number
-        if line == "---section---":
+        if line[0]['text'] == "---section---":
             all_lines.append(line)
             continue
-        char_range = (next(iter(line[1]))['range'][0], next(reversed(line[1]))['range'][1])
-        x_range = (next(iter(line[1]))['x0'], next(reversed(line[1]))['x1'])
-        line_info = {'range': char_range, 'x_dims': x_range}
-        line_content = ' '.join([w['text'] for w in line[1]])
-        all_lines.append((line_no, line_content, line_info, line))
+        all_lines.append(line)
         line_no += 1
 
     return all_lines
@@ -100,14 +121,14 @@ def process_page_lines(page_lines):
 def segment_lines_into_sections(all_lines):
     """Segment the processed lines into structured sections."""
     sections = []
-    section = {}
+    section = []
 
     for line in all_lines:
-        if line == "---section---":
+        if line[0]['text'] == "---section---":
             sections.append(section)
-            section = {}
+            section = []
         else:
-            section[(line[0], line[1])] = (line[2], line[3])
+            section.append(line)
 
     return sections
 
