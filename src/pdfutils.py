@@ -1,6 +1,13 @@
 import camelot
 import pdfplumber
 
+
+"""
+This is a pretty awkward and fragile set of functions, but I could not think of a way to extract the data from the pdf without this heavy customization.
+It deals with the case where there is a page with two tables, each table having its own set of footnotes, and those footnotes being arranged in two columns.
+The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
+"""
+
 def clean_name(full_name, patterns):
     new_name = full_name.lower()
     for pattern, replacement in patterns:
@@ -15,18 +22,14 @@ def parse_table(table):
     for i in table[1:]:
         txt = i[0]
         word_metadata = i[1]
-        print(txt)
         abs(word_metadata[0]['x0'] - col2_start)
         # This logic helps deal with table rows that have multiple lines of text in a cell
         if abs(word_metadata[0]['x0'] - col2_start) < 1:
-            print("secondary line")
             full_row_text = f'{full_row_text} {txt}'
         elif full_row_text:
             rows.append(full_row_text.split(' ', 1))
-            print("First line of later row")
             full_row_text = txt
         else:
-            print("First line of first row")
             full_row_text = txt  
     return rows
 
@@ -321,9 +324,7 @@ def keep_lines_outside_table(page, lines):
     return table_orientations, page_text
 
 
-# This is a pretty awkward and fragile set of functions, but I could not think of a way to extract the data from the pdf without this heavy customization.
-# It deals with the case where there is a page with two tables, each table having its own set of footnotes, and those footnotes being arranged in two columns.
-# The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
+
 
 
 def replace_footnote_num_with_footnote_text(df, table_footnotes, key, num):
