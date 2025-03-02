@@ -19,18 +19,25 @@ def parse_table(table):
     rows = []
     col2_start = table[0][1][1]['x0']
     full_row_text = ''
+    # print("Table object is: ", table)
+    # k1,k2 = table[0][0].split(' ', 1) # This is to get the column names. It only works of the column headings are one word and there are two of them. Which is true for my purposes now.
     for i in table[1:]:
         txt = i[0]
+        print("txt is", i)
         word_metadata = i[1]
         abs(word_metadata[0]['x0'] - col2_start)
         # This logic helps deal with table rows that have multiple lines of text in a cell
         if abs(word_metadata[0]['x0'] - col2_start) < 1:
             full_row_text = f'{full_row_text} {txt}'
         elif full_row_text:
+            # rows.append(dict(zip([k1, k2], full_row_text.split(' ', 1))))
             rows.append(full_row_text.split(' ', 1))
+            print('Just appended', full_row_text)
             full_row_text = txt
+            print('Just started', full_row_text)
         else:
-            full_row_text = txt  
+            full_row_text = txt
+    rows.append(full_row_text.split(' ', 1)) # Append the last row
     return rows
 
 def get_word_starts_x(line):

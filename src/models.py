@@ -70,4 +70,14 @@ class ColCustomization:
     is_fk: bool = False
 
 
+# @dataclass
+# class RowInPDF:
+#     row_id: int
+#     row_type: str
+#     row_text: str
+#     row_data: List[dict] = field(default_factory=list)
+
+
+
+
 __all__ = ['Dataset', 'ColCustomization']

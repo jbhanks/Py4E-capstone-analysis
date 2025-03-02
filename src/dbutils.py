@@ -80,6 +80,34 @@ def create_lookup_table(engine, lookup_table_name, text_column_name):
         lookup_table.create(engine)
         return lookup_table
 
+
+# def create_lookup_table(engine, lookup_table_name, columns):
+#     """
+#     Create a lookup table with specified columns.
+
+#     Args:
+#         engine (Engine): The SQLAlchemy engine connected to the database.
+#         lookup_table_name (str): The name of the lookup table to create.
+#         columns (list of tuples): A list of tuples where each tuple contains the column name and its creation arguments.
+
+#     Returns:
+#         Table: The created lookup table.
+#     """
+#     metadata = MetaData()
+#     metadata.reflect(bind=engine)
+#     if table_exists(engine, lookup_table_name):
+#         print("Table exists")
+#     else:
+#         # Step 3: Create the lookup table with specified columns
+#         lookup_table = Table(
+#             lookup_table_name,
+#             metadata,
+#             Column('id', Integer, primary_key=True, autoincrement=True),
+#             *[Column(col_name, *col_args) for col_name, *col_args in columns]
+#         )
+#         lookup_table.create(engine)
+#         return lookup_table
+
 def create_table_for_dataset(column_names, keepcols, prefix, row, engine):
     if 'staddr' in column_names:
         cols = keepcols + [('building_num', Integer), ('street_name', String)]
