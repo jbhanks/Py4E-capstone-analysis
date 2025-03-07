@@ -1,5 +1,6 @@
 from sqlalchemy import Engine
 from sqlalchemy import inspect, create_engine, Column, Integer, String, Date, MetaData, event, Table, text, LargeBinary
+from sqlalchemy.exc import OperationalError
 
 import pandas as pd
 import datetime
@@ -63,22 +64,38 @@ def write_layer_to_db(layer_dict, layer_name, orm_classes, session):
         session.commit()
 
 
-def create_lookup_table(engine, lookup_table_name, text_column_name):
-    metadata = MetaData()
-    metadata.reflect(bind=engine)
-    if table_exists(engine, lookup_table_name):
-        print("Table exists")
-    else:
-        # Step 3: Create the lookup table with ID and category columns
-        lookup_table = Table(
-            lookup_table_name,
-            metadata,
-            Column('id', Integer, primary_key=True, autoincrement=True),
-            Column(text_column_name, String, unique=True, nullable=False, default="NO DATA"),
-            Column('info', String, unique=False, nullable=True, default=None)
-        )
-        lookup_table.create(engine)
-        return lookup_table
+# def create_lookup_table(engine, lookup_table_name, text_column_name):
+#     metadata = MetaData()
+#     metadata.reflect(bind=engine)
+#     if table_exists(engine, lookup_table_name):
+#         print("Table exists")
+#     else:
+#         # Step 3: Create the lookup table with ID and category columns
+#         lookup_table = Table(
+#             f'{lookup_table_name}_lookup',
+#             metadata,
+#             Column('id', Integer, primary_key=True, autoincrement=True),
+#             Column(text_column_name, String, unique=True, nullable=False, default="NO DATA"),
+#             Column('info', String, unique=False, nullable=True, default=None)
+#         )
+#         lookup_table.create(engine)
+#         return lookup_table
+
+def create_lookup_table(metadata, lookup_table_name, text_column_name):
+    table_name = f"{lookup_table_name}_lookup"
+    
+    if table_name in metadata.tables:  # Avoid redefining existing tables
+        print(f"Skipping existing table: {table_name}")
+        return
+    
+    lookup_table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column(text_column_name, String, unique=True, nullable=False, default="NO DATA"),
+        Column("info", String, unique=False, nullable=True, default=None),
+    )
+    return lookup_table
 
 
 # def create_lookup_table(engine, lookup_table_name, columns):
@@ -180,6 +197,19 @@ def preprocess_dataset(engine, shared_dataset_configs, specific_dataset_config, 
     prefix = configs['prefix'] + '/' + name
     insert_dataset(prefix + "_rows.json", engine,prefix, keepcols, column_names, datetime_cols)
 
+def retry(func, *args, max_retries=3, **kwargs):
+    """Retry function with backoff for SQLite locks."""
+    for attempt in range(max_retries):
+        try:
+            print(f"Retry attempt {attempt + 1}: func={func}, args={args}, kwargs={kwargs}")
+            return func(*args, **kwargs)
+        except OperationalError as e:
+            if "database seems to be locked" in str(e):
+                print(f"Database is locked. Retrying ({attempt + 1}/{max_retries})...")
+                time.sleep(1 * (attempt + 1))  # Gradual backoff
+            else:
+                raise
+    raise Exception("Exceeded maximum retries due to database locks.")
 
 # Explicitly define what gets imported when using `from models import *`
-__all__ = ['table_exists', 'write_layer_to_db', 'create_lookup_table', 'create_table_for_dataset', 'insert_dataset', 'prep_col_info']
+__all__ = ['table_exists', 'write_layer_to_db', 'create_lookup_table', 'create_table_for_dataset', 'insert_dataset', 'prep_col_info', 'retry']

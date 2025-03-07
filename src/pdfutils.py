@@ -1,6 +1,6 @@
 import camelot
 import pdfplumber
-
+import copy
 
 """
 This is a pretty awkward and fragile set of functions, but I could not think of a way to extract the data from the pdf without this heavy customization.
@@ -68,7 +68,6 @@ def extract_and_normalize_elements(page, same_line_tolerance):
     """Extract words and section markers, normalize their positions, and return sorted elements."""
     words = page.extract_words()
     normalized_words = normalize_top(words, same_line_tolerance)
-
     rects = [
         # {"text": "---section---", "top": r["top"], 'x0': r['x0'], 'x1': r['x1']}  # Dummy marker for sorting
         {**r, "text": "---section---"}
@@ -134,7 +133,7 @@ def segment_lines_into_sections(all_lines):
     section = []
 
     for line in all_lines:
-        if line[0]['text'] == "---section---":
+        if line[0]['text'] in ["---section---", 'APPENDIX']:
             sections.append(section)
             section = []
         else:

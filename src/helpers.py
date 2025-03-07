@@ -4,6 +4,7 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import logging
 import subprocess
+from dateutil.parser import parse
 
 
 # ANSI color codes
@@ -137,5 +138,12 @@ def merge_dicts(shared: dict, specific: dict) -> dict:
             merged[key] = shared_value
     return merged
 
+
+
+def parseDateString(date_string: str):
+    date_object = parse(date_string, fuzzy=True)
+    return date_object
+
+
 # Explicitly define what gets imported when using `from models import *`
-__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount', 'isCategory']
+__all__ = ['get_file', 'downloader', 'jqfilter', 'unzipper', 'getDatasetRowCount', 'isCategory', 'parseDateString']

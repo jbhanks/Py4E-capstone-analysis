@@ -67,6 +67,7 @@ class ColCustomization:
     definitions: dict = field(default_factory=dict)
     # definitions: dict = field(default_factory=Definition)
     drop: bool = False
+    is_category: bool = False
     is_fk: bool = False
 
 
