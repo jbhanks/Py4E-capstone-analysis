@@ -1,7 +1,6 @@
 from sqlalchemy import Engine
 from sqlalchemy import inspect, create_engine, Column, Integer, String, Date, MetaData, event, Table, text, LargeBinary
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import DeclarativeBase
 
 import pandas as pd
 import datetime
@@ -10,8 +9,6 @@ from src.helpers import merge_dicts
 # import geopandas as gpd
 
 
-class Base(DeclarativeBase):
-    pass
 
 def table_exists(engine: Engine, table_name: str, schema: str = None) -> bool:
     """
@@ -67,45 +64,6 @@ def write_layer_to_db(layer_dict, layer_name, orm_classes, session):
         session.commit()
 
 
-def create_lookup_table(metadata, lookup_table_name, text_column_name):
-    table_name = f"{lookup_table_name}_lookup"
-    
-    if table_name in metadata.tables:  # Avoid redefining existing tables
-        print(f"Skipping existing table: {table_name}")
-        return
-    
-    lookup_table = Table(
-        table_name,
-        metadata,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column(text_column_name, String, unique=True, nullable=False, default="NO DATA"),
-        Column("info", String, unique=False, nullable=True, default=None),
-    )
-    return lookup_table
-
-# def create_lookup_table(lookup_table_name, text_column_name, base_module="__main__"):
-#     """Create a SQLAlchemy table class for lookup tables"""
-#     table_name = f"{lookup_table_name}_lookup"
-#     class_name = table_name.capitalize()
-    
-#     # Create table class dynamically
-#     attrs = {
-#         "__tablename__": table_name,
-#         "__module__": base_module,
-#         "id": Column(Integer, primary_key=True, autoincrement=True),
-#         text_column_name: Column(String, unique=True, nullable=False, default="NO DATA"),
-#         "info": Column(String, unique=False, nullable=True, default=None)
-#     }
-
-#     # Create the class and let SQLAlchemy handle registration
-#     lookup_cls = type(class_name, (Base,), attrs)
-    
-#     # Ensure the table is added to the metadata
-#     if table_name not in Base.metadata.tables:
-#         Base.metadata._add_table(lookup_cls.__table__, None)
-    
-#     return lookup_cls
-
 # def create_lookup_table(engine, lookup_table_name, text_column_name):
 #     metadata = MetaData()
 #     metadata.reflect(bind=engine)
@@ -123,24 +81,21 @@ def create_lookup_table(metadata, lookup_table_name, text_column_name):
 #         lookup_table.create(engine)
 #         return lookup_table
 
-
-# def create_lookup_table(lookup_table_name, text_column_name):
-#     table_name = f"{lookup_table_name}_lookup"
-#     if table_name in Base.metadata.tables:
-#         print(f"Skipping existing table: {table_name}")
-#         return Base.metadata.tables[table_name]
+def create_lookup_table(metadata, lookup_table_name, text_column_name):
+    table_name = f"{lookup_table_name}_lookup"
     
-#     attrs = {
-#         "__tablename__": table_name,
-#         "id": Column(Integer, primary_key=True, autoincrement=True),
-#         text_column_name: Column(String, unique=True, nullable=False, default="NO DATA"),
-#         "info": Column(String, unique=False, nullable=True, default=None)
-#     }
+    if table_name in metadata.tables:  # Avoid redefining existing tables
+        print(f"Skipping existing table: {table_name}")
+        return
     
-#     lookup_cls = type(table_name, (Base,), attrs)
-#     return lookup_cls
-
-
+    lookup_table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column(text_column_name, String, unique=True, nullable=False, default="NO DATA"),
+        Column("info", String, unique=False, nullable=True, default=None),
+    )
+    return lookup_table
 
 
 # def create_lookup_table(engine, lookup_table_name, columns):
@@ -257,4 +212,4 @@ def retry(func, *args, max_retries=3, **kwargs):
     raise Exception("Exceeded maximum retries due to database locks.")
 
 # Explicitly define what gets imported when using `from models import *`
-__all__ = ['table_exists', 'write_layer_to_db', 'create_lookup_table', 'create_table_for_dataset', 'insert_dataset', 'prep_col_info', 'retry', 'Base']
+__all__ = ['table_exists', 'write_layer_to_db', 'create_lookup_table', 'create_table_for_dataset', 'insert_dataset', 'prep_col_info', 'retry']

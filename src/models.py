@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import List
 from sqlalchemy.orm._orm_constructors import synonym
+from sqlalchemy import Table
+
 from typing import Optional
 
 # Dataclass to hold information about an NYC Open Data dataset, to filled with metadata provided by the API
@@ -64,11 +66,12 @@ class ColCustomization:
     new_name: Optional[str] = None
     dtype: Optional[str] = None
     synonyms: List[str] = field(default_factory=list)
-    definitions: dict = field(default_factory=dict)
+    definitions: List[str] = field(default_factory=list)
     # definitions: dict = field(default_factory=Definition)
     drop: bool = False
     is_category: bool = False
     is_fk: bool = False
+    orm: Optional[Table] = None
 
 
 # @dataclass
