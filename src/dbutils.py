@@ -4,6 +4,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase
 
 import pandas as pd
+import re
 import datetime
 from src.helpers import merge_dicts
 # from sqlalchemy.orm import sessionmaker

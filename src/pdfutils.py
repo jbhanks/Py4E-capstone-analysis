@@ -1,3 +1,5 @@
+# This file is for functions that I made specifically to process specific pdf files used in the project. I do not expect these functions to be useful for other projects, but hopefully bits of them will be.
+
 import camelot
 import pdfplumber
 import copy
@@ -8,6 +10,7 @@ It deals with the case where there is a page with two tables, each table having 
 The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
 """
 
+
 def clean_name(full_name, patterns):
     new_name = full_name.lower()
     for pattern, replacement in patterns:
@@ -17,32 +20,34 @@ def clean_name(full_name, patterns):
 
 def parse_table(table):
     rows = []
-    col2_start = table[0][1][1]['x0']
-    full_row_text = ''
+    col2_start = table[0][1][1]["x0"]
+    full_row_text = ""
     # print("Table object is: ", table)
     # k1,k2 = table[0][0].split(' ', 1) # This is to get the column names. It only works of the column headings are one word and there are two of them. Which is true for my purposes now.
     for i in table[1:]:
         txt = i[0]
         print("txt is", i)
         word_metadata = i[1]
-        abs(word_metadata[0]['x0'] - col2_start)
+        abs(word_metadata[0]["x0"] - col2_start)
         # This logic helps deal with table rows that have multiple lines of text in a cell
-        if abs(word_metadata[0]['x0'] - col2_start) < 1:
-            full_row_text = f'{full_row_text} {txt}'
+        if abs(word_metadata[0]["x0"] - col2_start) < 1:
+            full_row_text = f"{full_row_text} {txt}"
         elif full_row_text:
             # rows.append(dict(zip([k1, k2], full_row_text.split(' ', 1))))
-            rows.append(full_row_text.split(' ', 1))
-            print('Just appended', full_row_text)
+            rows.append(full_row_text.split(" ", 1))
+            print("Just appended", full_row_text)
             full_row_text = txt
-            print('Just started', full_row_text)
+            print("Just started", full_row_text)
         else:
             full_row_text = txt
-    rows.append(full_row_text.split(' ', 1)) # Append the last row
+    rows.append(full_row_text.split(" ", 1))  # Append the last row
     return rows
 
+
 def get_word_starts_x(line):
-    starts = [word['x0'] for word in line]
+    starts = [word["x0"] for word in line]
     return starts
+
 
 def normalize_top(objects, tolerance=0.3):
     """Adjust 'top' values so that small variations within tolerance are treated as equal. This is necessary when parsing PDFs where words on a line may have slightly different top positions. Made with the help of ChatGPT"""
@@ -72,12 +77,15 @@ def extract_and_normalize_elements(page, same_line_tolerance):
         # {"text": "---section---", "top": r["top"], 'x0': r['x0'], 'x1': r['x1']}  # Dummy marker for sorting
         {**r, "text": "---section---"}
         for r in page.objects["rect"]
-        if r["width"] > page.width * 0.5 and r["height"] < 2 and r['non_stroking_color'] is not None 
-        and r['non_stroking_color'][0] > 0.5  # Adjust thresholds as needed
+        if r["width"] > page.width * 0.5
+        and r["height"] < 2
+        and r["non_stroking_color"] is not None
+        and r["non_stroking_color"][0] > 0.5  # Adjust thresholds as needed
     ]
     normalized_rects = normalize_top(rects, same_line_tolerance)
     elements = normalized_words + normalized_rects
     return sorted(elements, key=lambda e: e["top"])
+
 
 def group_elements_into_lines(elements_sorted, same_line_tolerance):
     """Group sorted elements into lines based on top coordinate similarity."""
@@ -87,8 +95,8 @@ def group_elements_into_lines(elements_sorted, same_line_tolerance):
     line = []
 
     for word in elements_sorted:
-        if word['text'] == "---section---":
-            if line:  
+        if word["text"] == "---section---":
+            if line:
                 page_lines.append(line)
             page_lines.append([word])  # Append section break
             line = []
@@ -100,7 +108,9 @@ def group_elements_into_lines(elements_sorted, same_line_tolerance):
 
         if last_top is None or abs(word["top"] - last_top) > same_line_tolerance:
             if last_top is not None and line:
-                sorted_line = sorted(line, key=lambda w: w["x0"]) # Do one last horizontal sort to make sure the words in each line are in the correct order
+                sorted_line = sorted(
+                    line, key=lambda w: w["x0"]
+                )  # Do one last horizontal sort to make sure the words in each line are in the correct order
                 page_lines.append(sorted_line)
             last_top = word["top"]
             line = [word]
@@ -113,13 +123,14 @@ def group_elements_into_lines(elements_sorted, same_line_tolerance):
 
     return page_lines
 
+
 def process_page_lines(page_lines):
     """Store lines while removing the title and page number, and format them."""
     all_lines = []
     line_no = 0
 
     for line in page_lines[1:-1]:  # Skip title and page number
-        if line[0]['text'] == "---section---":
+        if line[0]["text"] == "---section---":
             all_lines.append(line)
             continue
         all_lines.append(line)
@@ -127,19 +138,21 @@ def process_page_lines(page_lines):
 
     return all_lines
 
+
 def segment_lines_into_sections(all_lines):
     """Segment the processed lines into structured sections."""
     sections = []
     section = []
 
     for line in all_lines:
-        if line[0]['text'] in ["---section---", 'APPENDIX']:
+        if line[0]["text"] in ["---section---", "APPENDIX"]:
             sections.append(section)
             section = []
         else:
             section.append(line)
 
     return sections
+
 
 def map_pdf(pdf_path, same_line_tolerance=0.3, start_page=None, stop_page=None):
     """Main function to extract structured sections from a PDF."""
@@ -152,6 +165,7 @@ def map_pdf(pdf_path, same_line_tolerance=0.3, start_page=None, stop_page=None):
 
         sections = segment_lines_into_sections(all_lines)
     return sections
+
 
 ########################### Zoning data dict
 
@@ -330,9 +344,6 @@ def keep_lines_outside_table(page, lines):
     return table_orientations, page_text
 
 
-
-
-
 def replace_footnote_num_with_footnote_text(df, table_footnotes, key, num):
     df.replace(
         {
@@ -355,7 +366,7 @@ def replace_footnote_num_with_footnote_text(df, table_footnotes, key, num):
     ] = table_footnotes[key][num]
     df.index = df.index.str.replace(rf"<s>\s?{num}</s>", "", regex=True)
     df.columns = df.columns.str.replace(rf"<s>\s?{num}</s>", "", regex=True)
-    df.index = df.index.str.replace(r" Inﬁ ll", "", regex=True)
+    df.index = df.index.str.replace(r" ?Inﬁ ll", "", regex=True)
     df.index = df.index.str.replace(r"</?s>", "", regex=True)
     df.index = df.index.str.replace(r"\n", " ", regex=True)
     df.columns = df.columns.str.replace("\n", " ", regex=True)
@@ -569,3 +580,339 @@ def parse_zoning_details(pdf_path):
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################
+
+##################################################################################################
+### These functions are for extracting the table in Appendix D of the PLUTO data dictionary.
+### Like the "tables" in some of the definitions, it isn't actually a table, just text arranged in a table-like way.
+##################################################################################################
+
+
+def group_by_top_with_tolerance(elements, tolerance=0.1):
+    groups = []
+    for elem in sorted(elements, key=lambda x: x["top"]):
+        matched = False
+        for group in groups:
+            if abs(group[0]["top"] - elem["top"]) <= tolerance:
+                group.append(elem)
+                matched = True
+                break
+        if not matched:
+            groups.append([elem])
+    return groups
+
+
+def restructure_data(data):
+    result = []
+    for group in data:
+        subgroups = []
+        subgroup = [group[0]]
+        for item in group[1:]:
+            if item["x0"] - subgroup[-1]["x1"] <= 10:
+                subgroup.append(item)
+            else:
+                subgroups.append(subgroup)
+                subgroup = [item]
+        subgroups.append(subgroup)
+        result.append(subgroups)
+    return result
+
+
+def merge_sublists(data, x_misalignment_tolerance=0.1):
+    # Extract the first sublist
+    first_sublist = copy.deepcopy(data[0])
+
+    # Iterate over the remaining sublists
+    for sublist in data[1:]:
+        for subsublist in sublist:
+            # Determine the x-range of the sub-sub-list
+            start = min(item["x0"] for item in subsublist)
+            # stop = max(item["x1"] for item in subsublist)
+
+            # Find the appropriate sub-sub-list in the first sublist to append to
+            for target_subsublist in first_sublist:
+                target_start = min(item["x0"] for item in target_subsublist)
+                target_stop = max(item["x1"] for item in target_subsublist)
+
+                if (
+                    target_start - x_misalignment_tolerance
+                    <= start
+                    <= target_stop + x_misalignment_tolerance
+                ):
+                    target_subsublist.extend(subsublist)
+                    break
+
+    return [first_sublist]
+
+
+def fix_row(row, x_misalignment_tolerance=0.1, y_misalignment_tolerance=0.1):
+    first_sort = sorted(
+        row, key=lambda x: (x["top"], x["x0"])
+    )  # `row` instead of `lst`
+    grouped_by_top = group_by_top_with_tolerance(
+        first_sort, tolerance=y_misalignment_tolerance
+    )
+    restructured_data = restructure_data(grouped_by_top)
+    merged_data = merge_sublists(
+        restructured_data, x_misalignment_tolerance=x_misalignment_tolerance
+    )
+
+    return merged_data
+
+
+import pdfplumber
+
+
+def trim_lines_outside_table(
+    lines, table_top_boundary_text=None, table_bottom_boundary_text=None
+):
+    """Returns the index of the first line to contain the specified table_top_boundary_text
+
+    Args:
+        lines (_type_): _description_
+        table_top_boundary_text (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    for idx, line in enumerate(lines):
+        if table_top_boundary_text is not None and table_top_boundary_text in " ".join(
+            [word["text"] for word in line]
+        ):
+            top_trim_line = idx
+            continue
+        elif (
+            table_bottom_boundary_text is not None
+            and table_bottom_boundary_text in " ".join([word["text"] for word in line])
+        ):
+            bottom_trim_line = idx
+            continue
+        else:
+            continue
+
+    trimmed_lines = [
+        line
+        for idx, line in enumerate(lines)
+        if idx > top_trim_line and idx < bottom_trim_line
+    ]
+    return trimmed_lines
+
+
+def group_words_by_row(words, y_thresh=5):
+    """Groups words into rows based on vertical proximity, allowing small deviations in top values."""
+    words = sorted(words, key=lambda w: w["top"])  # Sort words top-to-bottom
+    rows = []
+    for word in words:
+        added = False
+        for row in rows:
+            # Compare with first word in the row for stability
+            if abs(word["top"] - max([w["top"] for w in row])) <= y_thresh:
+                row.append(word)
+                added = True
+                break
+        if not added:
+            rows.append([word])
+
+    return rows
+
+
+def merge_words_in_row(row, x_thresh=10):
+    """
+    Merges words in a single row, considering the provided x_thresh for horizontal grouping.
+
+    Returns:
+    - A list of merged text blocks, each with the merged text and bounding box.
+    """
+    row.sort(key=lambda w: (w["x0"], w["top"]))  # Sort words left-to-right
+    merged_blocks = []
+    current_block = []
+    for word in row:
+        if current_block and (word["x0"] - current_block[-1]["x1"]) <= x_thresh:
+            current_block.append(word)
+        else:
+            if current_block:
+                current_block.sort(
+                    key=lambda w: w["top"]
+                )  # Sort block by top coordinate to get text in each table cell correctly ordered.
+                merged_blocks.append(current_block)
+            current_block = [word]
+
+    if current_block:
+        merged_blocks.append(current_block)
+
+    return [
+        {
+            "text": " ".join(w["text"] for w in block),
+            "x0": min(w["x0"] for w in block),
+            "x1": max(w["x1"] for w in block),
+            "top": min(w["top"] for w in block),
+            "bottom": max(w["bottom"] for w in block),
+        }
+        for block in merged_blocks
+    ]
+
+
+from collections import defaultdict
+
+
+def merge_lines_in_row(lines, y_thresh):
+    merged_lines = []
+
+    for line in lines:
+        if not merged_lines:
+            merged_lines.append(line)
+            continue
+
+        prev_line = merged_lines[-1]
+
+        # Compute merging condition
+        min_top_current = min(word["top"] for word in line)
+        max_bottom_prev = max(word["bottom"] for word in prev_line)
+
+        if min_top_current - max_bottom_prev < y_thresh:
+            # Merge into the previous line
+            merged_lines[-1].extend(line)
+        else:
+            # Start a new line
+            merged_lines.append(line)
+
+    # Now merge words by `x0` within each line
+    result = []
+
+    for line in merged_lines:
+        grouped = defaultdict(list)
+
+        for _, word in enumerate(line):
+            grouped[word["x0"]].append(word)
+
+        merged_words = []
+
+        for x0 in sorted(grouped.keys()):  # Preserve order
+            words = grouped[x0]
+            merged_text = " ".join(w["text"] for w in words)
+            x1 = max(w["x1"] for w in words)
+            top = min(w["top"] for w in words)
+            bottom = max(w["bottom"] for w in words)
+
+            merged_words.append(
+                {"text": merged_text, "x0": x0, "x1": x1, "top": top, "bottom": bottom}
+            )
+
+        result.append(merged_words)
+
+    return result
+
+
+def detect_header_by_uppercase(rows):
+    """Identifies the header row by checking if all words are uppercase."""
+    header_row = []
+    body_rows = []
+
+    for row in rows:
+        if all(word["text"].isupper() for word in row):  # All words must be uppercase
+            header_row = header_row + row
+        else:
+            body_rows.append(row)
+
+    return header_row, body_rows
+
+
+def merge_words_into_rows(
+    words, header_x_thresh, header_y_thresh, body_x_thresh, body_y_thresh
+):
+    """
+    Groups words into rows and merges horizontally close words.
+    """
+    rows = group_words_by_row(words, header_y_thresh)
+    print("ROWS ARE", rows)
+    trimmed_rows = trim_lines_outside_table(
+        rows,
+        table_top_boundary_text="APPENDIX D: LAND USE CATEGORIES",
+        table_bottom_boundary_text="NOTES:",
+    )
+    header_row, body_rows = detect_header_by_uppercase(trimmed_rows)
+    merged_header = merge_words_in_row(header_row, header_x_thresh)
+    # merged_rows = [merge_words_in_row(row, body_x_thresh) for row in body_rows]
+    merged_rows = [fix_row(row) for row in body_rows]
+    # merged_rows = merge_lines_in_row(merged_rows, body_y_thresh)
+    all_rows = [merged_header] + merged_rows
+    return all_rows
+    # return merged_rows
+
+
+def assign_columns_to_blocks(merged_rows, column_gap_thresh=20, ncol=3):
+    """
+    Assigns a column index to each merged text block by detecting significant gaps in x0 values.
+
+    Parameters:
+    - merged_rows: List of lists of merged word blocks.
+    - column_gap_thresh: Minimum gap to consider as a column boundary.
+
+    Returns:
+    - A list where each element is a tuple (column_index, word_block_dict).
+    """
+    all_x_values = sorted(set(block["x0"] for row in merged_rows for block in row))
+
+    # Detect gaps to determine column boundaries
+    column_boundaries = [all_x_values[0]]
+    for i in range(1, len(all_x_values)):
+        if all_x_values[i] - all_x_values[i - 1] > column_gap_thresh:
+            column_boundaries.append(all_x_values[i])
+
+    # def get_column_index(x0):
+    #     """Finds the appropriate column index for a given x0 value."""
+    #     for i, boundary in enumerate(column_boundaries):
+    #         if x0 < boundary:
+    #             return max(i - 1, 0)
+    #     return len(column_boundaries) - 1
+
+    structured_output = []
+    for idx, row in enumerate(merged_rows):
+        row_output = [cell for cell in row]
+        structured_output.append(row_output)
+
+    return structured_output
+
+
+def merge_objects_in_cell(list_of_objects):
+    return {
+        "text": " ".join(w["text"] for w in list_of_objects),
+        "x0": min(w["x0"] for w in list_of_objects),
+        "x1": max(w["x1"] for w in list_of_objects),
+        "top": min(w["top"] for w in list_of_objects),
+        "bottom": max(w["bottom"] for w in list_of_objects),
+    }
+
+
+def merge_text_in_cell(list_of_objects):
+    return " ".join(w["text"] for w in list_of_objects)
+
+
+__all__ = [
+    "clean_name",
+    "parse_table",
+    "get_word_starts_x",
+    "normalize_top",
+    "extract_and_normalize_elements",
+    "group_elements_into_lines",
+    "process_page_lines",
+    "segment_lines_into_sections",
+    "map_pdf",
+    "parse_zoning_def_dict",
+    "parse_field_name",
+    "parse_definitions_table",
+    "parse_zoning_details",
+    "parse_standard_page",
+    "parse_multitable_page",
+    "parse_single_table_page",
+    "parse_footnote_layout_1",
+    "parse_footnote_layout_2",
+    "handle_two_col_footnotes",
+    "parse_zoning_details",
+    "trim_lines_outside_table",
+    "group_words_by_row",
+    "merge_words_in_row",
+    "merge_words_into_rows",
+    "assign_columns_to_blocks",
+    "merge_objects_in_cell",
+    "merge_text_in_cell",
+]
