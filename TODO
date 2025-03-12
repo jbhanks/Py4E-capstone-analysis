@@ -1,3 +1,7 @@
-* missing basement type codes
-* Multiple tables for SPDs
-* Lookup table column names
+fk: land_use_category, proximity_code
+
+* Not all commercial zones extracted
+
+* Extra chars in zoning definitions
+
+* Integer values as foreign keys in populate_lookup_table
