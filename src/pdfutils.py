@@ -11,13 +11,6 @@ The footnotes on the other pages are in just one column and could be extracted w
 """
 
 
-def clean_name(full_name, patterns):
-    new_name = full_name.lower()
-    for pattern, replacement in patterns:
-        new_name = pattern.sub(replacement, new_name)
-    return new_name
-
-
 def parse_table(table):
     rows = []
     col2_start = table[0][1][1]["x0"]
@@ -240,6 +233,53 @@ def parse_definitions_table(description_string):
     return d
 
 
+def parse_zoning(pdf_path):
+    all_tables = {}
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf.pages, start=1):
+            # Extract raw text as lines
+            lines = page.extract_text().splitlines()
+            # Extract tables
+            tables = page.extract_tables()
+            for table_index, table in enumerate(tables):
+                # Find the position of the table in the raw text
+                table_start_line = find_table_start(lines, table)
+                # Extract the line before the table, if available
+                label_line = (
+                    lines[table_start_line - 2] if table_start_line > 0 else None
+                )
+                table = [row for row in table if "Abbreviation" not in row]
+                if label_line is not None:
+                    if "APPENDIX" in label_line:
+                        label_line = re.sub("APPENDIX.*: ", "", label_line)
+                        label_line = re.sub(" +", "_", label_line.lower())
+                        label_line = re.sub("s$", "", label_line.lower()) # remove trailing plural s so as to match column names
+                        prev_label_line = label_line
+                    elif "PLUTO DATA DICTIONARY" in label_line:
+                        label_line = None
+                    elif "APPENDIX" not in label_line:
+                        print("what's this?: ", print('label_line is', label_line))
+                        table = [row for row in table if "Abbreviation" not in row]
+                    if label_line != None:
+                        all_tables[label_line] = table
+                    else:
+                        all_tables[prev_label_line] = all_tables[prev_label_line] + table
+                else:
+                    print('table_index is', table_index)
+                    print('missed:', lines[table_start_line])
+    return all_tables
+
+
+# def find_table_start(lines, table):
+#     """
+#     Identify the start of the table in the text by matching table rows
+#     """
+#     for i, line in enumerate(lines):
+#         # Convert the table's first row into a string and search for it in the text
+#         table_row = " ".join(str(cell) for cell in table[1] if cell)  # Skip empty cells
+#         if line in table_row:
+#             return i
+#     return -1
 ####################################################################################################
 ##
 ##  Functions to extract zoning definitions from a particularly troublesome PDF, I doubt most of these will be reusable.
@@ -527,7 +567,9 @@ def parse_single_table_page(page_text, lines, table, table_orientation):
             df.columns[df.columns.str.contains(rf"<s>\s?{num}</s>", na=False)],
         ] = page_content[table_name]["footnotes"][num]
         df.index = df.index.str.replace(rf"<s>\s?{num}</s>", "", regex=True)
+        df.index = df.index.str.replace(rf"<s>(.*?)</s>", r"\1", regex=True)
         df.columns = df.columns.str.replace(rf"<s>\s?{num}</s>", "", regex=True)
+        df.columns = df.columns.str.replace(rf"Inﬁ ll", "Infill", regex=True)
         df.index = df.index.str.replace("\n", " ", regex=True)
         df.columns = df.columns.str.replace("\n", " ", regex=True)
     page_content[table_name]["df"] = df
@@ -888,7 +930,6 @@ def merge_text_in_cell(list_of_objects):
 
 
 __all__ = [
-    "clean_name",
     "parse_table",
     "get_word_starts_x",
     "normalize_top",
@@ -915,4 +956,5 @@ __all__ = [
     "assign_columns_to_blocks",
     "merge_objects_in_cell",
     "merge_text_in_cell",
+    "parse_zoning"
 ]
