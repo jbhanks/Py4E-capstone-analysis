@@ -10,6 +10,76 @@ It deals with the case where there is a page with two tables, each table having 
 The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
 """
 
+def parse_pluto_dict_sections(section):
+    in_table = False
+    in_description = False
+    header_added = False
+    table = None
+    col_mods = None  # Initialize col_mods here
+    for value in section:
+        line = ' '.join([word['text'] for word in value])
+        print(line)
+        if (line.startswith("Field Name: CENSUS") or line.startswith("Field Name: HEALTH")) and col_mods is not None: # Handle special cases where the dividing line (rectangle object) is not present in between column descriptions
+            if col_mods.short_name is not None:
+                print("Appending col_mods", col_mods)
+                column_customizations.append(col_mods)
+        if line.startswith('Field Name:') and len(value) > 2: # Exclude the explanation of "Field Name" itself on page 3
+            col_mods = ColCustomization(short_name=value[-1]['text'][1:-1]) # Get the field name minus the enclosing parentheses
+            full_name = ' '.join(word['text'] for word in value[2:-1])
+            print('full_name', full_name)
+            new_name = clean_name(full_name.lower())
+            print('new_name', new_name)
+            col_mods.is_category = any([word in new_name for word in category_markers])
+            col_mods.new_name = new_name
+            if any([w in col_mods.new_name for w in ['year', 'number', 'precinct']]):
+                col_mods.dtype = "Integer"
+            if 'date' in col_mods.new_name:
+                col_mods.dtype = "Date"
+            print('col_mods', col_mods)
+        elif line.startswith('Format:') and not col_mods.dtype:
+            if "Alphanumeric" in line:
+                col_mods.dtype = "String"
+            if "Numeric" in line and not col_mods.dtype:
+                col_mods.dtype = "Float"
+        elif line.startswith('Description:'):
+            in_description = True
+        if in_description is True:
+            if (line.startswith('Value') or line.startswith('VALUE')) and len(value) <= 3 and header_added is False: # Maximum number of words in a column heading
+                print("Detected table")
+                col_starts = get_word_starts_x(value)
+                in_table = True
+                table = [(line, value)]
+                header_added = True # This is for dealing with tables that go across pages, and have the header again on the second page.
+            elif in_table is True and (abs(col_starts[0] - get_word_starts_x(value)[0]) < .5 or abs(col_starts[1] - get_word_starts_x(value)[0]) < .5):
+                table.append((line, value))
+                print("Appended line", line)
+            elif in_table is True:
+                print("Table is", table)
+                table = parse_table(table)
+                print("Now the table is", table)
+                print('table[0][0] is', table[0][0])
+                if table[0][0].isdigit():
+                    print("Digits detected!")
+                    col_mods.is_fk = True
+                col_mods.definitions = table
+                in_table = False
+                header_added = False
+            else:
+                pass
+        else:
+            pass
+    if col_mods is not None:
+        if not col_mods.definitions and table:
+            col_mods.definitions = parse_table(table)
+        if col_mods.definitions:
+            col_mods.is_category = True
+        if col_mods.dtype == "Float" and col_mods.is_category == True:
+            col_mods.dtype = "Integer"
+        print("Appending col_mods", col_mods)
+        column_customizations.append(col_mods)
+    else:
+        print("col_mods was NONE!, col_mods is: ", col_mods)
+
 
 def parse_table(table):
     rows = []
@@ -930,6 +1000,7 @@ def merge_text_in_cell(list_of_objects):
 
 
 __all__ = [
+    "parse_pluto_dict_sections",
     "parse_table",
     "get_word_starts_x",
     "normalize_top",

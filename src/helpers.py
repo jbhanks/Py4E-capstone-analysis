@@ -1,15 +1,18 @@
+import os
 import re
 import json
 import requests
 import random
+import urllib.request #, urllib.parse, urllib.error
 from urllib3.util.retry import Retry
+from bisect import bisect_left
 from requests.adapters import HTTPAdapter
 import logging
 import subprocess
 from collections import defaultdict
 import glob
-import os
 from dateutil.parser import parse
+from bs4 import BeautifulSoup
 
 
 # ANSI color codes
@@ -108,65 +111,231 @@ def downloader(url, outfile_name, download_path, bigfile=False, chunk_size=8192)
             raise Exception(e)
         return file_path
 
+def get_table_rows(url):
+    html = urllib.request.urlopen(url).read()
+    soup = BeautifulSoup(html, 'html.parser')
+    return soup('tr')
+
+# Function to find matching prefixes using bisect
+def find_matching_keys(prefix, sorted_new_names):
+    i = bisect_left(sorted_new_names, prefix)
+    matches = []
+    while i < len(sorted_new_names) and sorted_new_names[i].startswith(prefix):
+        matches.append(sorted_new_names[i])
+        i += 1
+    return matches
+
+import subprocess
+import json
+
+
+def column_filter(col: dict) -> bool:
+    # Returns True if the column is to be kept
+    print(f"The col is {col}")
+    return (
+        col["renderTypeName"] != "meta_data"
+        or col["name"] in ["sid", "created_at", "updated_at"]
+    ) and not col["fieldName"].startswith(":@")
+
 
 def parse_metadata(metadata):
     try:
-        columns = metadata["columns"]
-        column_metadata = {column["fieldName"]: column for column in columns}
+        column_metadata = metadata["columns"]
+        metadata = {k: v for k, v in metadata.items() if k != "columns"}
+        for column in column_metadata:
+            if "cachedContents" in column:
+                column["cachedContents"].pop("top", None)
+        column_metadata = column_metadata
         cardinality_ratios = {
-            column["fieldName"]: int(column["cachedContents"]["non_null"])
+            clean_name(column["name"]): int(column["cachedContents"]["non_null"])
             / int(column["cachedContents"]["cardinality"])
-            for column in columns
+            for column in column_metadata
             if "cachedContents" in column.keys()
         }
-        col_types = {col["fieldName"]: col["dataTypeName"] for col in columns}
-        return column_metadata, cardinality_ratios, col_types
+        for col in column_metadata:
+            print(f"Column: {col}")
+        col_types = {
+            clean_name(col["name"]): col["dataTypeName"]
+            for col in column_metadata
+            if column_filter(col)
+        }
+        print(f"col_types: {col_types}")
+        return {
+            "metadata": metadata,
+            "column_metadata": column_metadata,
+            "cardinality_ratios": cardinality_ratios,
+            "col_types": col_types,
+        }
     except Exception as e:
-        print(f"Error parsing metadata: {e}")
-        return None, None, None
+        print(f"No column metadata in {metadata}")
+        raise e
 
 
-def jqfilter(infile, outfile, metadata_filter=".meta.view.columns"):
-    """Filters json datasets from NYC OpenData to remove metadata columns based on the metadata included in the dataset
-
-    Args:
-        infile (str): json file to filter
-        outfile (str): filtered json output path
-        metadata_filter (str, optional): jq selector for column metadata. Defaults to '.meta.view.columns'.
-
-    Returns:
-        str: Path of the filtered json file
-    """
-    # First, extract metadata (that output is expected to be small)
-    print(f'Filtering {infile}')
+def jq_metadata(infile, metadata_filter=".meta.view.columns"):
+    print(f"Filtering {infile}")
+    # Extract metadata first
     with open(infile, "r") as f:
         metadata = json.loads(
             subprocess.run(
-                ["jq", metadata_filter],
+                ["nocache", "jq", metadata_filter],
                 stdin=f,
                 capture_output=True,
                 text=True,
                 check=True,
             ).stdout
         )
-    print(f'Got metadata for {infile}')
-    selected_indices = [
-        i for i, col in enumerate(metadata) if col["renderTypeName"] != "meta_data" or not col["fieldName"].startswith(':@')
-    ]  # Filter out metadata columns
-    print(f'selected_indices are {selected_indices}')
-    data_filter = f'[.data[] | [{", ".join(f".[{i}]" for i in selected_indices)}]]'
+    print(f"Got metadata for {infile}")
+    return metadata
 
-    with open(infile, "r") as inf, open(outfile, "w") as outf:
-        subprocess.run(
-            ["jq", data_filter],
+
+def make_jq_filter(metadata):
+    print(f"metadata is {metadata}")
+    selected_indices = [i for i, col in enumerate(metadata) if column_filter(col)]
+    print(f"selected_indices are {selected_indices}")
+    data_filter = f'.data[] | [{", ".join(f".[{i}]" for i in selected_indices)}]'
+    print(f"data_filter is {data_filter}")
+    return data_filter
+
+
+def jqfilter(infile, outfile, data_filter):
+    with open(infile, "rb") as inf, open(outfile, "wb") as outf:
+        result = subprocess.run(
+            ["nocache", "jq", "-c", data_filter],
             stdin=inf,
             stdout=outf,
-            check=True,  # will raise an exception on error
+            stderr=subprocess.PIPE,
+            text=True,
         )
-    fd = outf.fileno()
-    os.fsync(fd) 
-    print(f"Output written to: {outfile}")
+        if result.returncode != 0:
+            print("jq error:", result.stderr)
+            result.check_returncode()
+
+    import ctypes, os
+
+    # posix_fadvise constants, from <fcntl.h>
+    POSIX_FADV_DONTNEED = 4
+
+    libc = ctypes.CDLL("libc.so.6", use_errno=True)
+
+    def advise_dontneed(fd):
+        ret = libc.posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED)
+        if ret != 0:
+            raise OSError(ret, os.strerror(ret))
+
+    # Use this after your subprocess.run completes writing to outfile.
+    with open(outfile, "rb") as outf:
+        advise_dontneed(outf.fileno())
     return outfile
+
+# def parse_metadata(metadata):
+#     try:
+#         columns = metadata["columns"]
+#         column_metadata = {column["fieldName"]: column for column in columns}
+#         cardinality_ratios = {
+#             column["fieldName"]: int(column["cachedContents"]["non_null"])
+#             / int(column["cachedContents"]["cardinality"])
+#             for column in columns
+#             if "cachedContents" in column.keys()
+#         }
+#         col_types = {col["fieldName"]: col["dataTypeName"] for col in columns}
+#         return column_metadata, cardinality_ratios, col_types
+#     except Exception as e:
+#         print(f"Error parsing metadata: {e}")
+#         return None, None, None
+
+
+
+# def parse_metadata(dataset_info, metadata):
+#     try:
+#         if 'column_metadata' in metadata.keys():
+#             dataset_info.metadata = {
+#                 k: v for k, v in metadata.items() if k != "columns"
+#             }
+#             column_metadata = metadata['columns']
+#             for column in column_metadata:
+#                 if "cachedContents" in column:
+#                     column["cachedContents"].pop("top", None)
+#             dataset_info.column_metadata = column_metadata
+#             dataset_info.cardinality_ratios = {
+#                 clean_name(column['name']): int(column["cachedContents"]["non_null"])
+#                 / int(column["cachedContents"]["cardinality"])
+#                 for column in column_metadata
+#                 if "cachedContents" in column.keys()
+#             }
+#             print(f'column_metadata: {column_metadata}')
+#             dataset_info.col_types = {
+#                 clean_name(column['name']): col["dataTypeName"]
+#                 for col in column_metadata
+#                 if column_filter(col)
+#             }
+#             print(f'dataset_info.col_types: {dataset_info.col_types}')
+#             return column_metadata
+#         else:
+#             return column_metadata
+#     except Exception as e:
+#         print(f"No column metadata in {column_metadata}")
+#         raise e
+
+# def column_filter(col: dict) -> bool:
+#     # Returns True if the column is to be kept
+#     return (
+#         col["renderTypeName"] != "meta_data"
+#         or col["name"] in ["sid", "created_at", "updated_at"]
+#     ) and not col["fieldName"].startswith(":@")
+
+
+# def jqfilter(dataset_info, infile, outfile, metadata_filter=".meta.view.columns"):
+
+#     def advise_dontneed(fd):
+#         ret = libc.posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED)
+#         if ret != 0:
+#             raise OSError(ret, os.strerror(ret))
+
+#     print(f"Filtering {infile}")
+#     # Extract metadata first
+#     with open(infile, "r") as f:
+#         metadata = json.loads(
+#             subprocess.run(
+#                 ["nocache", "jq", metadata_filter],
+#                 stdin=f,
+#                 capture_output=True,
+#                 text=True,
+#                 check=True,
+#             ).stdout
+#         )
+#     print(f"Got metadata for {infile}")
+#     selected_indices = [
+#         i
+#         for i, col in enumerate(metadata)
+#         if column_filter(col)
+#     ]
+#     new_metadata = parse_metadata(dataset_info, metadata)
+#     print(f"selected_indices are {selected_indices}")
+#     data_filter = f'.data[] | [{", ".join(f".[{i}]" for i in selected_indices)}]'
+#     print(f"data_filter is {data_filter}")
+
+#     # Use standard file reads/writes (binary mode) for streaming
+#     with open(infile, "rb") as inf, open(outfile, "wb") as outf:
+#         result = subprocess.run(
+#             ["nocache", "jq", '-c', data_filter],
+#             stdin=inf,
+#             stdout=outf,
+#             stderr=subprocess.PIPE,
+#             text=True,
+#         )
+#         if result.returncode != 0:
+#             print("jq error:", result.stderr)
+#             result.check_returncode()
+
+#     import ctypes, os
+#     # posix_fadvise constants, from <fcntl.h>
+#     POSIX_FADV_DONTNEED = 4
+#     libc = ctypes.CDLL("libc.so.6", use_errno=True)
+
+#     # Use this after your subprocess.run completes writing to outfile.
+#     with open(outfile, "rb") as outf:
+#         advise_dontneed(outf.fileno())
+#     return outfile, new_metadata
 
 
 def move_data(path, dict_dir):
@@ -347,11 +516,19 @@ def clean_name(full_name: str):
         new_name = pattern.sub(replacement, new_name)
     return new_name
 
+# Function to check if all non-NaN values are whole numbers
+def is_whole_number_series(s):
+    return (s.dropna() % 1 == 0).all() 
 
 # Explicitly define what gets imported when using `from models import *`
 __all__ = [
     "get_file",
     "downloader",
+    "get_table_rows",
+    "find_matching_keys",
+    "parse_metadata",
+    "jq_metadata",
+    "make_jq_filter",
     "jqfilter",
     "unzipper",
     "getDatasetRowCount",
@@ -361,4 +538,5 @@ __all__ = [
     "merge_dicts",
     "textClean",
     "clean_name",
+    "is_whole_number_series",
 ]
