@@ -227,116 +227,6 @@ def jqfilter(infile, outfile, data_filter):
         advise_dontneed(outf.fileno())
     return outfile
 
-# def parse_metadata(metadata):
-#     try:
-#         columns = metadata["columns"]
-#         column_metadata = {column["fieldName"]: column for column in columns}
-#         cardinality_ratios = {
-#             column["fieldName"]: int(column["cachedContents"]["non_null"])
-#             / int(column["cachedContents"]["cardinality"])
-#             for column in columns
-#             if "cachedContents" in column.keys()
-#         }
-#         col_types = {col["fieldName"]: col["dataTypeName"] for col in columns}
-#         return column_metadata, cardinality_ratios, col_types
-#     except Exception as e:
-#         print(f"Error parsing metadata: {e}")
-#         return None, None, None
-
-
-
-# def parse_metadata(dataset_info, metadata):
-#     try:
-#         if 'column_metadata' in metadata.keys():
-#             dataset_info.metadata = {
-#                 k: v for k, v in metadata.items() if k != "columns"
-#             }
-#             column_metadata = metadata['columns']
-#             for column in column_metadata:
-#                 if "cachedContents" in column:
-#                     column["cachedContents"].pop("top", None)
-#             dataset_info.column_metadata = column_metadata
-#             dataset_info.cardinality_ratios = {
-#                 clean_name(column['name']): int(column["cachedContents"]["non_null"])
-#                 / int(column["cachedContents"]["cardinality"])
-#                 for column in column_metadata
-#                 if "cachedContents" in column.keys()
-#             }
-#             print(f'column_metadata: {column_metadata}')
-#             dataset_info.col_types = {
-#                 clean_name(column['name']): col["dataTypeName"]
-#                 for col in column_metadata
-#                 if column_filter(col)
-#             }
-#             print(f'dataset_info.col_types: {dataset_info.col_types}')
-#             return column_metadata
-#         else:
-#             return column_metadata
-#     except Exception as e:
-#         print(f"No column metadata in {column_metadata}")
-#         raise e
-
-# def column_filter(col: dict) -> bool:
-#     # Returns True if the column is to be kept
-#     return (
-#         col["renderTypeName"] != "meta_data"
-#         or col["name"] in ["sid", "created_at", "updated_at"]
-#     ) and not col["fieldName"].startswith(":@")
-
-
-# def jqfilter(dataset_info, infile, outfile, metadata_filter=".meta.view.columns"):
-
-#     def advise_dontneed(fd):
-#         ret = libc.posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED)
-#         if ret != 0:
-#             raise OSError(ret, os.strerror(ret))
-
-#     print(f"Filtering {infile}")
-#     # Extract metadata first
-#     with open(infile, "r") as f:
-#         metadata = json.loads(
-#             subprocess.run(
-#                 ["nocache", "jq", metadata_filter],
-#                 stdin=f,
-#                 capture_output=True,
-#                 text=True,
-#                 check=True,
-#             ).stdout
-#         )
-#     print(f"Got metadata for {infile}")
-#     selected_indices = [
-#         i
-#         for i, col in enumerate(metadata)
-#         if column_filter(col)
-#     ]
-#     new_metadata = parse_metadata(dataset_info, metadata)
-#     print(f"selected_indices are {selected_indices}")
-#     data_filter = f'.data[] | [{", ".join(f".[{i}]" for i in selected_indices)}]'
-#     print(f"data_filter is {data_filter}")
-
-#     # Use standard file reads/writes (binary mode) for streaming
-#     with open(infile, "rb") as inf, open(outfile, "wb") as outf:
-#         result = subprocess.run(
-#             ["nocache", "jq", '-c', data_filter],
-#             stdin=inf,
-#             stdout=outf,
-#             stderr=subprocess.PIPE,
-#             text=True,
-#         )
-#         if result.returncode != 0:
-#             print("jq error:", result.stderr)
-#             result.check_returncode()
-
-#     import ctypes, os
-#     # posix_fadvise constants, from <fcntl.h>
-#     POSIX_FADV_DONTNEED = 4
-#     libc = ctypes.CDLL("libc.so.6", use_errno=True)
-
-#     # Use this after your subprocess.run completes writing to outfile.
-#     with open(outfile, "rb") as outf:
-#         advise_dontneed(outf.fileno())
-#     return outfile, new_metadata
-
 
 def move_data(path, dict_dir):
     dict_files = glob.glob(os.path.join(path, "*.xlsx")) + glob.glob(
@@ -509,7 +399,8 @@ def clean_name(full_name: str):
         (re.compile(r"/", flags=re.IGNORECASE), "_or_"),
         (re.compile(r"&", flags=re.IGNORECASE), "and"),
         (re.compile(r"!(altered)_[0-9]$", flags=re.IGNORECASE), ""),
-        (re.compile(r"\bboro(?!ugh)", flags=re.IGNORECASE), "borough"),
+        (re.compile(r"*", flags=re.IGNORECASE), ""),
+        # (re.compile(r"\bboro(?!ugh)", flags=re.IGNORECASE), "borough"),
     ]
     new_name = full_name.lower()
     for pattern, replacement in patterns:

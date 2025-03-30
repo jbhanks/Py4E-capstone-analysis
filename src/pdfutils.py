@@ -3,6 +3,9 @@
 import camelot
 import pdfplumber
 import copy
+from src.models import ColCustomization
+from src.helpers import clean_name
+
 
 """
 This is a pretty awkward and fragile set of functions, but I could not think of a way to extract the data from the pdf without this heavy customization.
@@ -10,7 +13,8 @@ It deals with the case where there is a page with two tables, each table having 
 The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
 """
 
-def parse_pluto_dict_sections(section):
+def parse_pluto_dict_sections(section, category_markers):
+    column_customizations = []
     in_table = False
     in_description = False
     header_added = False
@@ -79,6 +83,7 @@ def parse_pluto_dict_sections(section):
         column_customizations.append(col_mods)
     else:
         print("col_mods was NONE!, col_mods is: ", col_mods)
+    return column_customizations
 
 
 def parse_table(table):
