@@ -338,11 +338,11 @@ def convert_wkt(rows_to_insert):
         r.pop('_raw_geocoded_column', None)
 
 
-def insert_dataset(engine, dataset, jsonfile, columns, batch_size=10000, commit_interval=100):
+def insert_dataset(session, engine, dataset, jsonfile, columns, batch_size=10000, commit_interval=100):
     """
     Process the JSON Lines file in batches using pandas vectorized operations.
     """
-    session = SessionLocal()
+    # session = SessionLocal()
     col_names = list(columns.keys())
     rows_buffer = []  # to store each row (as a list) from the JSON Lines file
     batch_counter = 0

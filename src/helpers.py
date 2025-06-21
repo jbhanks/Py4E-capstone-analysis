@@ -172,6 +172,7 @@ def parse_metadata(metadata):
 
 
 def jq_metadata(infile, metadata_filter=".meta.view.columns"):
+    # Note: nocache and jq both need to be installed on the system
     print(f"Filtering {infile}")
     # Extract metadata first
     with open(infile, "r") as f:
@@ -399,7 +400,7 @@ def clean_name(full_name: str):
         (re.compile(r"/", flags=re.IGNORECASE), "_or_"),
         (re.compile(r"&", flags=re.IGNORECASE), "and"),
         (re.compile(r"!(altered)_[0-9]$", flags=re.IGNORECASE), ""),
-        (re.compile(r"*", flags=re.IGNORECASE), ""),
+        # (re.compile(r"*", flags=re.IGNORECASE), ""),
         # (re.compile(r"\bboro(?!ugh)", flags=re.IGNORECASE), "borough"),
     ]
     new_name = full_name.lower()

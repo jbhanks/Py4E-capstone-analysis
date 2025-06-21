@@ -1,5 +1,5 @@
 # This file is for functions that I made specifically to process specific pdf files used in the project. I do not expect these functions to be useful for other projects, but hopefully bits of them will be.
-
+# Be sure to install `camelot-py`, not camelot
 import camelot
 import pdfplumber
 import copy
