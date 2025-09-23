@@ -124,17 +124,50 @@ def set_column(colname, dtype):
     }
     return Column(colname, dtype, **args)
 
+# def create_table(columns, engine, tabname):
+#     columns = {'local_id': Column(Integer, primary_key=True)} | {colname: set_column(colname, dtype) for colname,dtype in columns.items() if isinstance(colname, str)}
+#     columns['sid'] = Column(String, unique=True, nullable=False)
+#     table_class = type(f"{tabname.capitalize()}Table", (Base,), {
+#         "__tablename__": f"{tabname}",
+#         "__table_args__": {'extend_existing': True},
+#         **columns
+#     })
+#     print(f'Creating table class {tabname}: {table_class}')
+#     # Create the table in the database
+#     Base.metadata.create_all(engine)
+#     return table_class
+
+from sqlalchemy import Table
+from sqlalchemy.orm import declarative_base
+
+# Assuming you already created Base with a naming convention (recommended)
+# Base = declarative_base(metadata=metadata)
+
 def create_table(columns, engine, tabname):
-    columns = {'local_id': Column(Integer, primary_key=True)} | {colname: set_column(colname, dtype) for colname,dtype in columns.items() if isinstance(colname, str)}
-    columns['sid'] = Column(String, unique=True, nullable=False)
-    table_class = type(f"{tabname.capitalize()}Table", (Base,), {
-        "__tablename__": f"{tabname}",
-        "__table_args__": {'extend_existing': True},
-        **columns
+    # If the table already exists in metadata, reuse it instead of redefining
+    if tabname in Base.metadata.tables:
+        table = Base.metadata.tables[tabname]
+        # map a new class on the existing Table (or return an existing class you’ve cached)
+        table_class = type(f"{tabname.capitalize()}Table", (Base,), {"__table__": table})
+        return table_class
+
+    # First definition: build columns once
+    cols = {'local_id': Column(Integer, primary_key=True)}
+    cols.update({
+        colname: set_column(colname, dtype)
+        for colname, dtype in columns.items() if isinstance(colname, str)
     })
-    print(f'Creating table class {tabname}: {table_class}')
-    # Create the table in the database
-    Base.metadata.create_all(engine)
+    cols['sid'] = Column(String, unique=True, nullable=False)
+
+    table_class = type(f"{tabname.capitalize()}Table", (Base,), {
+        "__tablename__": tabname,
+        # Prefer keep_existing to avoid re-adding constraints/indexes if someone defines again
+        "__table_args__": {"keep_existing": True},
+        **cols
+    })
+
+    # Create just this table (idempotent)
+    table_class.__table__.create(bind=engine, checkfirst=True)
     return table_class
 
 def create_table_for_dataset(columns, prefix, engine):
@@ -275,21 +308,23 @@ def update_numeric_columns(row, column_names, numeric_indices, new_column_types)
             if float(value) % 1 != 0:
                 colname = column_names[idx]
                 new_column_types[colname] = Float
-                break
+                # break
         elif isinstance(value, str):
             val_str = value.strip()
             if not val_str.isdigit() and is_number(val_str):
                 if float(val_str) % 1 != 0:
                     colname = column_names[idx]
                     new_column_types[colname] = Float
-                    break
+                    # break
+        else:
+            print(f"Unexpected type for numeric column {column_names[idx]}: {type(value)}")
     return new_column_types
 
 def set_dtypes(filename, column_types):
     """Main function to process the file and set data types."""
     print(f'Starting {filename}')
     if not filename.endswith('.json'):
-        print(f'{filename} is not a json file, skipping for now...')
+        print(f'{filename} is not a json file, skipping.')
         return column_types
 
     # Build the initial mapping of column names to SQLAlchemy types.
