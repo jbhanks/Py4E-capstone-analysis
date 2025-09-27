@@ -5,15 +5,6 @@ import re
 from typing import Optional, List, Dict
 
 
-
-# def Definition():
-#     return {
-#         'code': None,
-#         'definition': None,
-#         'etc': None,
-#     }
-
-
 @dataclass
 class ColCustomization:
     """Class to hold customizations for a column"""

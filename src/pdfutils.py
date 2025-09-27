@@ -12,7 +12,6 @@ This is a pretty awkward and fragile set of functions, but I could not think of 
 It deals with the case where there is a page with two tables, each table having its own set of footnotes, and those footnotes being arranged in two columns.
 The footnotes on the other pages are in just one column and could be extracted without resorting to looking for specific patterns.
 """
-
 def parse_pluto_dict_sections(section, category_markers):
     column_customizations = []
     in_table = False
@@ -35,8 +34,10 @@ def parse_pluto_dict_sections(section, category_markers):
             print('new_name', new_name)
             col_mods.is_category = any([word in new_name for word in category_markers])
             col_mods.new_name = new_name
-            if any([w in col_mods.new_name for w in ['year', 'number', 'precinct']]):
+            if any([w in col_mods.new_name for w in ['year', 'precinct']]):
                 col_mods.dtype = "Integer"
+            if any([w in col_mods.new_name for w in ['district_number', 'precinct', 'zip', 'block_and_lot']]):
+                col_mods.dtype = "String"
             if 'date' in col_mods.new_name:
                 col_mods.dtype = "Date"
             print('col_mods', col_mods)

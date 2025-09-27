@@ -4,4 +4,11 @@ fk: land_use_category, proximity_code
 
 * Extra chars in zoning definitions
 
-* Integer values as foreign keys in populate_lookup_table
+* Split addresses
+
+
+#####
+Pre-processing standardization
+1. Strip extra spaces
+2. Clean odd starting characters
+3. Split address

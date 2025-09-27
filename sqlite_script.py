@@ -1,3 +1,4 @@
+
 import os
 import subprocess
 import re
@@ -6,7 +7,6 @@ import codecs
 import time
 import dill
 time.sleep(3)
-import pprint
 
 from urllib.request import urlopen
 
@@ -27,12 +27,13 @@ from src.pdfutils import *
 with open("environment_data/table_dicts.pkl", "rb") as f:
     env = dill.load(f)
 
-
-
 # Restore the environment
 globals().update(env)
 
+
+import pprint
 pprint.pprint(dataset_info_dict)
+
 
 engine = create_engine(f'{SQLITE_PATH}?check_same_thread=False', echo=False)
 
@@ -95,8 +96,12 @@ for dataset in dataset_info_dict.values():
         main_col = [v for k,v in dataset.col_customizations.items() if dataset.col_customizations[k].new_name.endswith("_1")]
 
 
+import pprint
+pprint.pprint(dataset_info_dict)
+
+
 # Import the MapPLUTO data from geo database file (.gdb)
-pluto_version = "25v1_1"
+pluto_version = "25v2_1"
 gdb_path = f"{PROJECT_DATA}/files_to_use/MapPLUTO{pluto_version}.gdb"
 
 
@@ -264,6 +269,9 @@ with SessionLocal() as session:
                 raise e  # re-raise after logging for further debugging
         session.commit()
 
+
+
+import pprint
 pprint.pprint(dataset_info_dict)
 
 
@@ -336,8 +344,6 @@ plt.show()
 
 datatype_mappings = {"meta_data" : String, "calendar_date" : Date, "number" : Float, "text" : String, "point" : String}
 
-pprint.pprint(dataset_info_dict)
-
 
 import jsonlines
 import orjson
@@ -390,184 +396,146 @@ def convert_wkt(rows_to_insert):
         r.pop('_raw_geocoded_column', None)
 
 
+
 import pprint
-tax_liens = dataset_info_dict['tax_liens']
-pprint.pprint(tax_liens)
+pprint.pprint(dataset_info_dict)
 
 
+dataset = dataset_info_dict['tax_liens']
+pprint.pprint(dataset)
 
 
-dataset = tax_liens
-jsonfile = dataset.dataset_path
-columns = dataset.col_types
-batch_size=10000
+def insert_dataset(engine, dataset, jsonfile, columns, batch_size=10000):
+    """
+    Process the JSON Lines file in batches using pandas vectorized operations.
+    Uses engine.begin() to leverage executemany().
+    """
+    col_names = list(columns.keys())
+    expected_width = len(col_names)
+    rows_buffer = []
+    insert_stmt = None
+    DynamicTable = None
 
+    def custom_loads(s):
+        return orjson.loads(s.encode("utf-8"))
 
-col_names = list(columns.keys())
-expected_width = len(col_names)
-rows_buffer = []
-insert_stmt = None
-DynamicTable = None
+    def sanitize_rows(rows):
+        cleaned = []
+        for i, row in enumerate(rows):
+            new_row = {}
+            for k, v in row.items():
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    print(f"Offending value in row {i}, column '{k}': {repr(v)}")
+                    v = None
+                new_row[k] = v
+            cleaned.append(new_row)
+        return cleaned
 
-def custom_loads(s):
-    return orjson.loads(s.encode("utf-8"))
+    def validate_no_nans(rows):
+        for i, row in enumerate(rows):
+            for k, v in row.items():
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    print(f"❌ Still found NaN/Inf at row {i}, column '{k}' — value: {repr(v)}")
+                    raise ValueError("NaN or Inf sneaked through")
 
-def sanitize_rows(rows):
-    cleaned = []
-    for i, row in enumerate(rows):
-        new_row = {}
-        for k, v in row.items():
-            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                print(f"Offending value in row {i}, column '{k}': {repr(v)}")
-                v = None
-            new_row[k] = v
-        cleaned.append(new_row)
-    return cleaned
+    def process_batch(df, nullable_integer_columns):
+        df = df.where(pd.notnull(df), None)
 
-def validate_no_nans(rows):
-    for i, row in enumerate(rows):
-        for k, v in row.items():
-            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                print(f"❌ Still found NaN/Inf at row {i}, column '{k}' — value: {repr(v)}")
-                raise ValueError("NaN or Inf sneaked through")
+        # Sanitize strings
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = df[col].apply(lambda x: textClean(x) if isinstance(x, str) else x)
+            if pd.api.types.is_numeric_dtype(df[col]) and df[col].isna().any():
+                print(f"⚠️ Warning: {col} contains NaN")
 
-def process_batch(df, nullable_integer_columns):
-    df = df.where(pd.notnull(df), None)
+        # Fix nullable INTEGER columns: convert to nullable Int64
+        for col in nullable_integer_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
 
-    # Sanitize strings
-    for col in df.columns:
-        if df[col].dtype == object:
-            df[col] = df[col].apply(lambda x: textClean(x) if isinstance(x, str) else x)
-        if pd.api.types.is_numeric_dtype(df[col]) and df[col].isna().any():
-            print(f"⚠️ Warning: {col} contains NaN")
+        # Dates
+        datetime_cols = [key for key in columns if columns[key] is Date]
+        for col in datetime_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+                df[col] = df[col].apply(lambda x: x.date() if pd.notnull(x) else None)
+        if 'geocoded_column' in df.columns:
+            df['_raw_geocoded_column'] = df['geocoded_column']
+            df['geocoded_column'] = None
 
-    # Fix nullable INTEGER columns: convert to nullable Int64
-    for col in nullable_integer_columns:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+        df = split_address(df, 'address')
 
-    # Dates
-    datetime_cols = [key for key in columns if columns[key] is Date]
-    for col in datetime_cols:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-            df[col] = df[col].apply(lambda x: x.date() if pd.notnull(x) else None)
-    if 'geocoded_column' in df.columns:
-        df['_raw_geocoded_column'] = df['geocoded_column']
-        df['geocoded_column'] = None
+        rows = df.to_dict(orient="records")
+        rows = sanitize_rows(rows)
+        convert_wkt(rows)
+        validate_no_nans(rows)
+        return rows
 
-    df = split_address(df, 'address')
+    with jsonlines.open(jsonfile, mode='r', loads=custom_loads) as reader:
+        batch_start = time.perf_counter()
+        for idx, row in enumerate(reader):
+            if isinstance(row, list) and len(row) > expected_width:
+                row = row[:expected_width]
+            rows_buffer.append(row)
 
-    rows = df.to_dict(orient="records")
-    rows = sanitize_rows(rows)
-    convert_wkt(rows)
-    validate_no_nans(rows)
-    return rows
+            if (idx + 1) % batch_size == 0:
+                df = pd.DataFrame(rows_buffer, columns=col_names)
+                t0 = time.perf_counter()
+                if insert_stmt is None:
+                    print(f"📐 Creating table for dataset {dataset.short_name}")
+                    DynamicTable = create_table_for_dataset(
+                        columns=dataset.col_types,
+                        prefix=dataset.short_name,
+                        engine=engine
+                    )
+                    insert_stmt = DynamicTable.__table__.insert().prefix_with("OR IGNORE")
+                    print("📋 Table schema:")
+                    for col in DynamicTable.__table__.columns:
+                        print(f"  {col.name}: {col.type}, nullable={col.nullable}")
+                    nullable_integer_columns = [
+                        col for col, typ in columns.items()
+                        if typ is Integer and DynamicTable.__table__.columns[col].nullable
+                    ]
+                batch_rows = process_batch(df, nullable_integer_columns)
+                t2 = time.perf_counter()
+                with engine.begin() as conn:
+                    conn.execute(insert_stmt, batch_rows)
+                t3 = time.perf_counter()
+                print(f"📤 Inserted batch in {t3 - t2:.2f}s, total time {t3 - batch_start:.2f}s")
 
-with jsonlines.open(jsonfile, mode='r', loads=custom_loads) as reader:
-    for idx, row in enumerate(reader):
-        if isinstance(row, list) and len(row) > expected_width:
-            row = row[:expected_width]
-        rows_buffer.append(row)
+                rows_buffer.clear()
+                batch_start = time.perf_counter()
 
-        if (idx + 1) % batch_size == 0:
+        # Final flush
+        if rows_buffer:
+            DynamicTable = create_table_for_dataset(
+                columns=dataset.col_types,
+                prefix=dataset.short_name,
+                engine=engine
+            )
+            insert_stmt = DynamicTable.__table__.insert().prefix_with("OR IGNORE")
+            print(f'insert_stmt: {insert_stmt}')
+            nullable_integer_columns = [
+                col for col, typ in columns.items()
+                if typ is Integer and DynamicTable.__table__.columns[col].nullable]
+            print(f'nullable_integer_columns: {nullable_integer_columns}')
             df = pd.DataFrame(rows_buffer, columns=col_names)
-            if insert_stmt is None:
-                DynamicTable = create_table_for_dataset(
-                    columns=dataset.col_types,
-                    prefix=dataset.short_name,
-                    engine=engine
-                )
-                insert_stmt = DynamicTable.__table__.insert().prefix_with("OR IGNORE")
-                for col in DynamicTable.__table__.columns:
-                    print(f"  {col.name}: {col.type}, nullable={col.nullable}")
-                nullable_integer_columns = [
-                    col for col, typ in columns.items()
-                    if typ is Integer and DynamicTable.__table__.columns[col].nullable
-                ]
+            print(df.head())
             batch_rows = process_batch(df, nullable_integer_columns)
             with engine.begin() as conn:
                 conn.execute(insert_stmt, batch_rows)
+            print("✅ Final batch inserted successfully.")
 
-            rows_buffer.clear()
-    # Final flush
-    if rows_buffer:
-        df = pd.DataFrame(rows_buffer, columns=col_names)
-        batch_rows = process_batch(df, nullable_integer_columns)
-        with engine.begin() as conn:
-            conn.execute(insert_stmt, batch_rows)
-        print("✅ Final batch inserted successfully.")
 
-################
-def set_column(colname, dtype):
-    args = {
-        "primary_key": False,  # Marks the column as a primary key.
-        "nullable": True,  # Disallows NULL values.
-        "unique": False,  # Enforces unqiue values.
-        "index": True,  # Creates an index on this column.
-        "default" : None, # Python-side default
-        "server_default": 'NULL',  # SQL-side default value (as a string).
-        "autoincrement": True,  # Controls autoincrement behavior.
-    }
-    return Column(colname, dtype, **args)
+for name, dataset in dataset_info_dict.items():
+    if dataset.format == 'json':
+        print(f'Starting dataset {dataset.short_name}')
+        print(f'The dataset to be processed is {dataset}')
+        print(f'Starting dataset {dataset.short_name}')
+        insert_dataset(engine, dataset, dataset.dataset_path, dataset.col_types, batch_size=10000)
 
-def map_column_types(column_types):
-    """Map column names to SQLAlchemy types based on the given column types."""
-    return {
-        column: (
-            Integer if dtype == "number" or column in ['created_at', 'updated_at'] or column.startswith('int') else
-            String if dtype == "text" or column == "sid" or column.startswith('str') else
-            Date if dtype == "calendar_date" else
-            Float if dtype.startswith('float') else
-            JSON if dtype == "location" else
-            Geometry(geometry_type='POINT', srid=4326) if dtype == "point" else
-            Geometry(geometry_type='MULTIPOLYGON', srid=4326) if dtype == "multipolygon" else
-            (Geometry(geometry_type='POLYGON', srid=4326) if dtype == "polygon" else dtype)
-        )
-        for column, dtype in column_types.items() if not column.startswith(':@')
-    }
 
-# def set_detypes(colname, dtype):
-#     if dtype == 'Integer':
-#         return Integer
-#     elif dtype in ['text', 'meta_data']:
-#         return String
-#     elif dtype == 'Float':
-#         return Float
-#     elif dtype == 'Date':
-#         return Date
-#     elif dtype == 'LargeBinary':
-#         return LargeBinary
-#     else:
-#         raise ValueError(f"Unsupported dtype: {dtype}")
-    
-# def create_table(columns, engine, tabname):
-columns = {'local_id': Column(Integer, primary_key=True)} | {colname: set_column(colname, dtype) for colname,dtype in columns.items() if isinstance(colname, str)}
-columns['sid'] = Column(String, unique=True, nullable=False)
-table_class = type(f"{tabname.capitalize()}Table", (Base,), {
-    "__tablename__": f"{tabname}",
-    "__table_args__": {'extend_existing': True},
-    **columns
-})
-print(f'Creating table class {tabname}: {table_class}')
-# Create the table in the database
-Base.metadata.create_all(engine)
 
-for colname,dtype in columns.items():
-    print(f'colname: {colname}, dtype: {dtype}')
-    set_column(colname, dtype)
 
-for dataset in dataset_info_dict.values():
-    print(dataset.col_types)
-
-columns=dataset.col_types
-prefix=dataset.short_name
-engine=engine
-# def create_table_for_dataset(columns, prefix, engine):
-tabname = re.sub('.*/', '', prefix)
-print(f'Creating table {tabname}')
-DynamicTable = create_table(columns, engine, tabname)
-if DynamicTable is None:
-    raise(Exception("DynamicTable not made!"))
 
 
