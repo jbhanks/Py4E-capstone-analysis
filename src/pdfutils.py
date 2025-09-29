@@ -36,7 +36,7 @@ def parse_pluto_dict_sections(section, category_markers):
             col_mods.new_name = new_name
             if any([w in col_mods.new_name for w in ['year', 'precinct']]):
                 col_mods.dtype = "Integer"
-            if any([w in col_mods.new_name for w in ['district_number', 'precinct', 'zip', 'block_and_lot']]):
+            if any([w in col_mods.new_name for w in ['district_number', 'precinct', 'zip', 'block_and_lot', 'tax_block', 'tax_lot', 'borough_tax_block_and_lot']]):
                 col_mods.dtype = "String"
             if 'date' in col_mods.new_name:
                 col_mods.dtype = "Date"
@@ -346,16 +346,6 @@ def parse_zoning(pdf_path):
     return all_tables
 
 
-# def find_table_start(lines, table):
-#     """
-#     Identify the start of the table in the text by matching table rows
-#     """
-#     for i, line in enumerate(lines):
-#         # Convert the table's first row into a string and search for it in the text
-#         table_row = " ".join(str(cell) for cell in table[1] if cell)  # Skip empty cells
-#         if line in table_row:
-#             return i
-#     return -1
 ####################################################################################################
 ##
 ##  Functions to extract zoning definitions from a particularly troublesome PDF, I doubt most of these will be reusable.
@@ -549,9 +539,7 @@ def parse_footnote_layout_2(key, page_content, orientation):
 
 
 def handle_two_col_footnotes(page_content, key, orientation):
-    # table_footnotes = {key: {"footnotes": {}}}
     if re.match(r"^\n\d\d\n", page_content[key][1]):
-        # table_footnotes = {key : {'footnotes' : {}} }
         print(
             f"Assuming that {re.search(r'\d\d', page_content[key][1])} represents two different footnotes separated by whitespaces. Also assuming only two footnotes"
         )
@@ -976,12 +964,6 @@ def assign_columns_to_blocks(merged_rows, column_gap_thresh=20, ncol=3):
         if all_x_values[i] - all_x_values[i - 1] > column_gap_thresh:
             column_boundaries.append(all_x_values[i])
 
-    # def get_column_index(x0):
-    #     """Finds the appropriate column index for a given x0 value."""
-    #     for i, boundary in enumerate(column_boundaries):
-    #         if x0 < boundary:
-    #             return max(i - 1, 0)
-    #     return len(column_boundaries) - 1
 
     structured_output = []
     for idx, row in enumerate(merged_rows):

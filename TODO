@@ -1,14 +1,160 @@
-fk: land_use_category, proximity_code
+To fix :
+pluto:
+- Borough abbreviation -> code
+- Census tract 2010 decimal
 
-* Not all commercial zones extracted
+assessments:
+- bble decimal still in varchar
+- block_number not padded
 
-* Extra chars in zoning definitions
+assessment_actions
+- block_number and lot_number not padded
+- tax_class_code varchar decimal
 
-* Split addresses
+join table:
+
+mappluto: geometry, wkb, Shape_Leng, latitude, longitude
+id
+geometry
+wkb
+Shape_Leng
+Shape_Area
+borough
+tax_block
+tax_lot
+community_district
+census_tract_2020
+census_block_2020
+census_tract_2010
+census_block_2010
+school_district
+city_council_district
+zip_code
+fire_company
+police_precinct
+health_center_district
+health_area
+sanitation_district_boro
+sanitation_district_number
+sanitation_subsection
+address
+zoning_district_1
+zoning_district_2
+zoning_district_3
+zoning_district_4
+commercial_overlay_1
+commercial_overlay_2
+special_purpose_district_1
+special_purpose_district_2
+special_purpose_district_3
+limited_height_district
+split_boundary_indicator
+building_class
+land_use_category
+number_of_easements
+type_of_ownership_code
+owner_name
+lot_area
+total_building_floor_area
+commercial_floor_area
+residential_floor_area
+office_floor_area
+retail_floor_area
+garage_floor_area
+storage_floor_area
+factory_floor_area
+other_floor_area
+total_building_floor_area_source_code
+number_of_buildings
+number_of_floors
+residential_units
+total_units
+lot_frontage
+lot_depth
+building_frontage
+building_depth
+extension_code
+proximity_code
+irregular_lot_code
+lot_type
+basement_type_or_grade
+assessed_land_value
+assessed_total_value
+exempt_total_value
+year_built
+year_altered_1
+year_altered_2
+historic_district_name
+landmark_status
+built_floor_area_ratio
+maximum_allowable_residential_far
+maximum_allowable_commercial_far
+maximum_allowable_community_facility_far
+boro_code
+borough_tax_block_and_lot
+condominium_number
+census_tract_2
+x_coordinate
+y_coordinate
+zoning_map_num
+zoning_map_code
+sanborn_map_num
+tax_map_num
+e-designation_number
+apportionment_bbl
+apportionment_date
+pluto_dtm_base_map_indicator
+2007_flood_insurance_rate_map_indicator
+2015_preliminary_flood_insurance_rate_map
+version_number
+changed_by_dcp
+latitude
+longitude
+notes
 
 
-#####
-Pre-processing standardization
-1. Strip extra spaces
-2. Clean odd starting characters
-3. Split address
+Assessments:
+id
+sid
+address
+avland
+avland2
+avtot
+avtot2
+bble
+bin
+blddepth
+bldfront
+block_number
+borough
+borough_code
+building_class
+census_tract
+community_board
+council_district
+created_at
+easement
+excd1
+excd2
+exempttot
+exland
+exland2
+exmptcl
+ext
+extot2
+fullval
+latitude
+longitude
+lot_depth
+lot_front
+lot_number
+new_georeferenced_column
+nta
+number_of_floors
+owner_name
+period
+tax_class_code
+updated_at
+valtype
+year
+zip_code

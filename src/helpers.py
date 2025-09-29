@@ -412,6 +412,9 @@ def clean_name(full_name: str):
 def is_whole_number_series(s):
     return (s.dropna() % 1 == 0).all() 
 
+def format_float(value):
+    return str(value).rstrip('0').rstrip('.') if '.' in str(value) else str(value)
+
 # Explicitly define what gets imported when using `from models import *`
 __all__ = [
     "get_file",
@@ -431,4 +434,5 @@ __all__ = [
     "textClean",
     "clean_name",
     "is_whole_number_series",
+    "format_float",
 ]
