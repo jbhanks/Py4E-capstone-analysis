@@ -34,28 +34,42 @@ from .helpers import textClean, format_float
 
 from src.models import ColCustomization
 
-SPECIAL_PADDING_COLS = {"tax_block" : 5, "tax_lot" : 4, "block_number": 5, "lot_number": 4 }
+SPECIAL_PADDING_COLS = {"tax_block" : 5, "tax_lot" : 4, "block_number": 5, "lot_number": 4, "bin" : 7 }
 
 treat_as_string = {
     "bbl",
     "bble",
     "bin",
+    "bin_number",
     "block",
     "block_number",
     "block_and_lot",
     "borough_tax_block_and_lot",
     "census",
     "census_tract",
+    "council_district",
+    "citycouncildistrict",
+    "community_board",
+    "communitydistrict",
+    "communityschooldistrict",
+    "congressionaldistrict",
     "designation",
     "district",
+    "disposition_date",
     "e-designation",
     "fire_company",
+    "geographic_area_-_2010_census_fips_county_code",
+    "highousenumber",
+    "house_number",
     "lot",
     "lot_number",
+    "lowhousenumber",
+    "number",
     "police_precinct",
     "sanitation_district_number",
     "school_district",
     "sid",
+    "starfire_incident_id",
     "tax_block",
     "tax_class_code",
     "tax_lot",
@@ -345,7 +359,6 @@ def map_column_types(column_types):
         "fullval", "avland", "avtot", "exland", "exempttot",
         "avland2", "avtot2", "exland2", "extot2"
     }
-    print(f'starting column_types: {column_types}')
     return {
         column: (
             Numeric(14, 2) if column in value_cols else
@@ -445,11 +458,11 @@ def update_numeric_columns(row, column_names, numeric_indices, new_column_types)
                 new_column_types[colname] = String
                 continue
 
-            # code-like columns => String to preserve formatting/semantics
-            if looks_code_like(colname, val_str):
-                print(f'Setting {colname} to String due to code-like value: {val_str}')
-                new_column_types[colname] = String
-                continue
+        # code-like columns => String to preserve formatting/semantics
+        if looks_code_like(colname, val_str):
+            print(f'Setting {colname} to String due to code-like value: {val_str}')
+            new_column_types[colname] = String
+            continue
 
     return new_column_types
 
@@ -525,12 +538,9 @@ def order_columns(d):
     return dict(items[:0] + [("sid", d["sid"])] + items[0:])
 
 def add_padding_to_special_columns(df, padding_map):
-    print(f"🔧 Adding padding..")
     for col, width in padding_map.items():
-        print(f"   - checking if column '{col}' is in {df.columns}")
         if col in df.columns:
             df[col] = df[col].apply(lambda x: format_float(x).zfill(width) if pd.notnull(x) else x)
-            print(f"🔧 Padded column '{col}' to width {width}, resulting in {df[col]}")
     return df
     
 def insert_dataset(engine: Engine, dataset, jsonfile, columns, batch_size=100000):
@@ -544,7 +554,6 @@ def insert_dataset(engine: Engine, dataset, jsonfile, columns, batch_size=100000
     from shapely import from_wkt as shapely_from_wkt
 
     # --- create the target table once and reuse ---
-    print(f"Before ordering columns: {columns}")
     ordered_col_types = order_columns(dataset.col_types)
 
     DynamicTable = create_table_for_dataset(
@@ -860,13 +869,12 @@ def insert_dataset(engine: Engine, dataset, jsonfile, columns, batch_size=100000
         df = df.where(pd.notnull(df), None)
 
         # Sanitize strings
-        NUMERICISH_COLS = {"latitude", "longitude", "lat", "lon", "lng", "x", "y"}
+        NUMERICISH_COLS = {"latitude", "longitude", "lat", "lon", "lng", "x", "y", "issue_date", "x_coord_cd", "y_coord_cd", "x_coord", "y_coord"}
 
         for col in df.columns:
             if col in treat_as_string:
                 df[col] = df[col].apply(lambda x: format_float(x) if pd.notnull(x) else x).astype("string")
-
-            if df[col].dtype == object:
+            elif df[col].dtype == object:
                 # If this column is mostly numeric, convert to numeric and skip textClean
                 numeric_ratio = pd.to_numeric(df[col], errors="coerce").notna().mean()
                 if col.lower() in NUMERICISH_COLS or numeric_ratio >= 0.8:
@@ -1119,6 +1127,7 @@ __all__ = [
     # "prep_col_info",
     "make_url",
     "retry",
+    "treat_as_string",
     "set_dtypes",
     "SPECIAL_PADDING_COLS",
     "add_padding_to_special_columns",

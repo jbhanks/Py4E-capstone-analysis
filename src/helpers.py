@@ -147,10 +147,13 @@ def parse_metadata(metadata):
                 column["cachedContents"].pop("top", None)
         column_metadata = column_metadata
         cardinality_ratios = {
-            clean_name(column["name"]): int(column["cachedContents"]["non_null"])
-            / int(column["cachedContents"]["cardinality"])
+            clean_name(column["name"]): (
+                int(column["cachedContents"]["non_null"]) / int(column["cachedContents"]["cardinality"])
+                if int(column["cachedContents"]["cardinality"]) != 0
+                else 0
+            )
             for column in column_metadata
-            if "cachedContents" in column.keys()
+            if "cachedContents" in column
         }
         for col in column_metadata:
             print(f"Column: {col}")
@@ -368,29 +371,29 @@ def textClean(text: str):
     return text.strip()
 
 
-def split_address(row_data, address_col):
-    if address_col in row_data.keys():
-        if row_data[address_col] is None:
-            row_data["building_num"], row_data["street"] = None, None
-            row_data.pop(address_col)
-            return row_data
-        else:
-            if row_data[address_col][0].isdigit():
-                try:
-                    addr = row_data[address_col].split(" ", 1)
-                    if len(addr) == 1:
-                        addr = [None] + addr
-                    row_data["building_num"], row_data["street"] = addr
-                except Exception as e:
-                    print(e)
-                    print(row_data[address_col])
-            else:
-                row_data["building_num"], row_data["street_name"] = (
-                    None,
-                    row_data[address_col],
-                )
-        row_data.pop(address_col)
-    return row_data
+# def split_address(row_data, address_col):
+#     if address_col in row_data.keys():
+#         if row_data[address_col] is None:
+#             row_data["building_num"], row_data["street"] = None, None
+#             row_data.pop(address_col)
+#             return row_data
+#         else:
+#             if row_data[address_col][0].isdigit():
+#                 try:
+#                     addr = row_data[address_col].split(" ", 1)
+#                     if len(addr) == 1:
+#                         addr = [None] + addr
+#                     row_data["building_num"], row_data["street"] = addr
+#                 except Exception as e:
+#                     print(e)
+#                     print(row_data[address_col])
+#             else:
+#                 row_data["building_num"], row_data["street_name"] = (
+#                     None,
+#                     row_data[address_col],
+#                 )
+#         row_data.pop(address_col)
+#     return row_data
 
 
 def clean_name(full_name: str):
@@ -429,7 +432,7 @@ __all__ = [
     "getDatasetRowCount",
     "isCategory",
     "parseDateString",
-    "split_address",
+    # "split_address",
     "merge_dicts",
     "textClean",
     "clean_name",
