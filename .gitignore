@@ -13,6 +13,7 @@ develop-eggs/
 dist/
 downloads/
 Downloads
+data/*
 environment_data/
 eggs/
 .eggs/
@@ -171,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+/data/probe/hmc_violations.json
+/old/sqlite:
+*.sqlite
+*.sqlite3
+*.db
